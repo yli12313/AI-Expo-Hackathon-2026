@@ -12,11 +12,19 @@ Run with --verify to test retrieval after ingestion:
 import os
 import re
 import sys
+import logging
+import warnings
 import requests
 import pdfplumber
 import chromadb
+from chromadb.config import Settings
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
+
+# Suppress ChromaDB telemetry noise and duplicate-ID warnings
+os.environ["ANONYMIZED_TELEMETRY"] = "false"
+logging.getLogger("chromadb").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*existing embedding ID.*")
 
 # ---------------------------------------------------------------------------
 # Config
@@ -254,11 +262,38 @@ def verify(collection, model: SentenceTransformer):
 # ---------------------------------------------------------------------------
 
 def main():
-    run_verify = "--verify" in sys.argv
+    run_verify_only = "--verify" in sys.argv
 
     VECTORSTORE.mkdir(exist_ok=True)
 
-    print("\n=== Step 1: Downloading PDFs ===")
+    # Suppress ChromaDB telemetry noise
+    os.environ.setdefault("ANONYMIZED_TELEMETRY", "false")
+
+    client = chromadb.PersistentClient(
+        path=str(VECTORSTORE),
+        settings=Settings(anonymized_telemetry=False),
+    )
+    collection = client.get_or_create_collection(
+        name=COLLECTION,
+        metadata={"hnsw:space": "cosine"},
+    )
+
+    print("\n=== Loading Embedding Model ===")
+    print(f"  model: {EMBED_MODEL}")
+    model = SentenceTransformer(EMBED_MODEL)
+
+    # --verify: skip ingestion, just query existing store
+    if run_verify_only:
+        count = collection.count()
+        if count == 0:
+            print("[!] Vector store is empty — run without --verify first.")
+            sys.exit(1)
+        print(f"  [ok] Store has {count} chunks — running verification only\n")
+        verify(collection, model)
+        return
+
+    # --- Full ingestion ---
+    print("\n=== Step 1: Checking PDFs ===")
     downloaded = []
     for src in SOURCES:
         ok = download_pdf(src["url"], src["local_path"])
@@ -268,7 +303,7 @@ def main():
     if not downloaded:
         print("\n[!] No PDFs found locally. Download them manually:")
         for src in SOURCES:
-            print(f"    {src['source_url']}")
+            print(f"    {src['url']}")
             print(f"    → save to: {src['local_path']}\n")
         print("Then re-run: python3 ingest.py")
         sys.exit(1)
@@ -293,25 +328,24 @@ def main():
 
     print(f"\nTotal chunks across all documents: {len(all_chunks)}")
 
-    print("\n=== Step 4: Loading Embedding Model ===")
-    print(f"  model: {EMBED_MODEL} (downloads once, then cached locally)")
-    model = SentenceTransformer(EMBED_MODEL)
+    print("\n=== Step 4+5: Embedding and Storing ===")
+    # Clear existing data for clean re-ingest
+    existing = collection.count()
+    if existing > 0:
+        print(f"  [reset] Clearing {existing} existing chunks for clean re-ingest")
+        client.delete_collection(COLLECTION)
+        collection = client.get_or_create_collection(
+            name=COLLECTION,
+            metadata={"hnsw:space": "cosine"},
+        )
 
-    print("\n=== Step 5: Building ChromaDB Vector Store ===")
-    client     = chromadb.PersistentClient(path=str(VECTORSTORE))
-    collection = client.get_or_create_collection(
-        name=COLLECTION,
-        metadata={"hnsw:space": "cosine"},
-    )
+
     build_vectorstore(all_chunks, model, collection)
     print(f"\n  Total chunks in store: {collection.count()}")
 
-    if run_verify:
-        verify(collection, model)
-
     print("\n=== Done ===")
     print(f"Vector store saved to: {VECTORSTORE}/")
-    print("Run 'python ingest.py --verify' to test retrieval.")
+    print("Run 'python3 ingest.py --verify' to test retrieval.")
 
 
 if __name__ == "__main__":
