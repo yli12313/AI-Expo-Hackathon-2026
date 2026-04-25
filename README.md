@@ -122,7 +122,6 @@ A conversational AI assistant that handles the entire TDY planning workflow:
 ### Prerequisites
 
 - Python 3.10+
-- Anthropic API key
 
 ### Setup
 
@@ -139,7 +138,6 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Set environment variables
-export ANTHROPIC_API_KEY="your-key-here"
 export GSA_API_KEY="your-key-here"
 
 # Ingest regulations into vector store (first run only)
