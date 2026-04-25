@@ -103,6 +103,18 @@ A conversational AI assistant that handles the entire TDY planning workflow:
                Rates       DA 31)
 ```
 
+## Branch Strategy
+
+| Branch | Purpose | Owner |
+|--------|---------|-------|
+| `main` | Streamlit UI, app entry point, integration | TBD |
+| `backend` | RAG pipeline, agent orchestration, LLM integration, GSA API | TBD |
+| `data` | PDF parsing, regulation ingestion, vector store build, form templates | TBD |
+
+**Workflow:** Each branch develops independently → PRs merge into `main` for integration.
+
+---
+
 ## Tech Stack
 
 | Component | Technology |
