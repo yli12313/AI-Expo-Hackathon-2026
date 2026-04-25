@@ -32,9 +32,9 @@ EMBED_MODEL  = "BAAI/bge-small-en-v1.5"
 TOP_K        = 4   # chunks to retrieve per query
 
 # OpenRouter config — swap LLM_BASE_URL + LLM_MODEL env vars for local inference
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
-LLM_MODEL    = os.getenv("LLM_MODEL",    "mistralai/mistral-7b-instruct")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
+LLM_MODEL    = os.getenv("LLM_MODEL",    "gemma4:latest")
+LLM_API_KEY  = os.getenv("LLM_API_KEY",  "ollama")
 
 SYSTEM_PROMPT = """You are Duty Line, an AI assistant for US military personnel.
 You answer questions about military regulations, travel entitlements, leave policies, and administrative procedures.
@@ -68,7 +68,7 @@ class RAGAgent:
         )
         self._llm = OpenAI(
             base_url=LLM_BASE_URL,
-            api_key=OPENROUTER_API_KEY or "no-key",
+            api_key=LLM_API_KEY,
         )
 
     def _retrieve(self, query: str, domain: str | None = None) -> list[dict]:
