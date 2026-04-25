@@ -1,0 +1,9 @@
+openai
+python-dotenv
+pdfplumber
+PyMuPDF
+pdfrw
+requests
+streamlit
+chromadb
+sentence-transformers

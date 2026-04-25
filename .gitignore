@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+venv/
+.venv/
+vectorstore/
+*.egg-info/
+dist/
+build/
+.streamlit/secrets.toml
