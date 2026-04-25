@@ -61,28 +61,59 @@ A conversational AI assistant — works offline — that handles the full TDY + 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│            STREAMLIT CHAT UI                 │
-│     Natural language input + PDF preview     │
-└──────────────────┬──────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────┐
-│           ORCHESTRATOR AGENT                 │
-│    Intent classification → route to tool     │
-└──────┬──────────┬──────────┬────────────────┘
-       │          │          │
-       ▼          ▼          ▼
-┌──────────┐ ┌──────────┐ ┌──────────┐
-│REGULATION│ │  TRAVEL  │ │   FORM   │
-│   RAG    │ │  COST    │ │  FILLER  │
-│  AGENT   │ │  AGENT   │ │  AGENT   │
-└──────────┘ └──────────┘ └──────────┘
-       │          │          │
-       ▼          ▼          ▼
-  Vector Store  GSA API    PDF Templates
-  (JTR, ARs)   Per Diem   (DA 1610, DA 31)
-  local/offline  cached     form output
+┌──────────────────────────────────────────────────────────┐
+│                   UI (Chat Interface)                    │
+│             Web app or desktop, works offline            │
+└──────────────────────┬───────────────────────────────────┘
+                       │ user query
+                       ▼
+┌──────────────────────────────────────────────────────────┐
+│                 ORCHESTRATOR AGENT                       │
+│   - Classifies intent                                    │
+│   - Routes to correct specialist agent                   │
+│   - Manages multi-agent handoffs                         │
+│   - Tracks conversation state                            │
+└────┬────────────┬────────────┬───────────────┬───────────┘
+     │            │            │               │
+     ▼            ▼            ▼               ▼
+┌─────────┐ ┌─────────┐ ┌──────────┐ ┌───────────────┐
+│ Travel  │ │  Leave  │ │   Regs   │ │     Form      │
+│  /TDY   │ │   /HR   │ │Navigator │ │    Filler     │
+│  Agent  │ │  Agent  │ │  Agent   │ │    Agent      │
+└────┬────┘ └────┬────┘ └────┬─────┘ └───────┬───────┘
+     │            │            │               │
+     └────────────┴────────────┴───────────────┘
+                       │ metadata-filtered query
+                       ▼
+┌──────────────────────────────────────────────────────────┐
+│             SHARED VECTOR STORE (semantic chunks)        │
+│                                                          │
+│  ┌──────────────────┐  ┌──────────────────┐             │
+│  │ travel│defense   │  │ leave │army/navy  │             │
+│  │ JTR PDFs         │  │ AR 600-8-10      │             │
+│  │ GSA rates        │  │ DA forms         │             │
+│  └──────────────────┘  └──────────────────┘             │
+│  ┌──────────────────┐  ┌──────────────────┐             │
+│  │ regs │army/navy  │  │ forms │all branch │             │
+│  │ AR/FM/AFI PDFs   │  │ DD/DA templates  │             │
+│  └──────────────────┘  └──────────────────┘             │
+│                                                          │
+│  Each chunk tagged: {source, branch, domain, section}    │
+└──────────────────────┬───────────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────────┐
+│           OPEN SOURCE LLM (local, offline)               │
+│       instruction-tuned, 7B–13B parameter range          │
+└──────────────────────┬───────────────────────────────────┘
+                       │
+          ┌────────────┼──────────────┐
+          ▼            ▼              ▼
+    ┌──────────┐ ┌──────────┐ ┌─────────────┐
+    │ GSA API  │ │ SAM.gov  │ │    Form     │
+    │ per diem │ │contracts │ │  Generator  │
+    │ (cached) │ │   API    │ │ PDF output  │
+    └──────────┘ └──────────┘ └─────────────┘
 ```
 
 ---
