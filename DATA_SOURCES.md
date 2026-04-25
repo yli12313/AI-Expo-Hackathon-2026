@@ -143,15 +143,3 @@ Organized by agent. Each agent has its own set of APIs and PDFs to ingest.
 10. **eCFR / Federal Register** — broader regulation lookups
 11. **Cross-branch eval regs** (BUPERSINST 1610.10, AFI 36-2406, MCO 1610.7)
 
----
-
-## Not Available (CAC-Required / Internal Only)
-
-These systems have no public API and require military credentials:
-- **DTS** (Defense Travel System) — where travel authorizations are actually submitted
-- **IPPS-A** (Army personnel/pay system)
-- **NSIPS** (Navy personnel system)
-- **myPers** (Air Force personnel system)
-- **DEERS / milConnect** — personnel database
-- **DTMS** — training management
-- **MEDPROS** — medical readiness
