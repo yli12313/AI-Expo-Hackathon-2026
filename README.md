@@ -117,15 +117,7 @@ A conversational AI assistant that handles the entire TDY planning workflow:
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|-----------|
-| LLM | Claude (via Anthropic API) |
-| RAG / Vector Store | ChromaDB + sentence-transformers |
-| PDF Parsing | PyMuPDF + pdfplumber |
-| PDF Form Fill | pdfrw |
-| Per Diem Rates | GSA Open API (api.gsa.gov) |
-| Frontend | Streamlit |
-| Backend | Python |
+TBD
 
 ---
 
