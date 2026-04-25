@@ -1,7 +1,7 @@
 .env
 venv/
 vectorstore/
-data/
+data/**/*.pdf
 __pycache__/
 *.pyc
 .DS_Store

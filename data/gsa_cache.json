@@ -1,0 +1,347 @@
+{
+  "_meta": {
+    "fiscal_year": "2026",
+    "standard_rate": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus"
+    },
+    "note": "Rates in USD per day. mie_first_last = 75% of M&IE (JTR rule for first/last travel day)."
+  },
+  "rates": {
+    "fayetteville_nc": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Fayetteville",
+      "state": "NC",
+      "installation": "Fort Liberty"
+    },
+    "columbus_ga": {
+      "lodging": 104,
+      "mie": 64,
+      "mie_first_last": 48,
+      "source": "gsa_known_fy2026",
+      "city": "Columbus",
+      "state": "GA",
+      "installation": "Fort Moore"
+    },
+    "clarksville_tn": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Clarksville",
+      "state": "TN",
+      "installation": "Fort Campbell"
+    },
+    "killeen_tx": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Killeen",
+      "state": "TX",
+      "installation": "Fort Cavazos"
+    },
+    "el_paso_tx": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "El Paso",
+      "state": "TX",
+      "installation": "Fort Bliss"
+    },
+    "watertown_ny": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Watertown",
+      "state": "NY",
+      "installation": "Fort Drum"
+    },
+    "hinesville_ga": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Hinesville",
+      "state": "GA",
+      "installation": "Fort Stewart"
+    },
+    "tacoma_wa": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Tacoma",
+      "state": "WA",
+      "installation": "JBLM"
+    },
+    "anchorage_ak": {
+      "lodging": 196,
+      "mie": 100,
+      "mie_first_last": 75,
+      "source": "gsa_known_fy2026",
+      "city": "Anchorage",
+      "state": "AK",
+      "installation": "JBER"
+    },
+    "fairbanks_ak": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Fairbanks",
+      "state": "AK",
+      "installation": "Fort Wainwright"
+    },
+    "junction_city_ks": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Junction City",
+      "state": "KS",
+      "installation": "Fort Riley"
+    },
+    "augusta_ga": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Augusta",
+      "state": "GA",
+      "installation": "Fort Eisenhower"
+    },
+    "sierra_vista_az": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Sierra Vista",
+      "state": "AZ",
+      "installation": "Fort Huachuca"
+    },
+    "anniston_al": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Anniston",
+      "state": "AL",
+      "installation": "Fort McClellan"
+    },
+    "huntsville_al": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Huntsville",
+      "state": "AL",
+      "installation": "Redstone Arsenal"
+    },
+    "norfolk_va": {
+      "lodging": 147,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "gsa_known_fy2026",
+      "city": "Norfolk",
+      "state": "VA",
+      "installation": "NAS Norfolk"
+    },
+    "san_diego_ca": {
+      "lodging": 200,
+      "mie": 79,
+      "mie_first_last": 59,
+      "source": "gsa_known_fy2026",
+      "city": "San Diego",
+      "state": "CA",
+      "installation": "NAS North Island"
+    },
+    "jacksonville_fl": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Jacksonville",
+      "state": "FL",
+      "installation": "NAS Jacksonville"
+    },
+    "bremerton_wa": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Bremerton",
+      "state": "WA",
+      "installation": "Naval Base Kitsap"
+    },
+    "jacksonville_nc": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Jacksonville",
+      "state": "NC",
+      "installation": "Camp Lejeune"
+    },
+    "oceanside_ca": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Oceanside",
+      "state": "CA",
+      "installation": "Camp Pendleton"
+    },
+    "quantico_va": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Quantico",
+      "state": "VA",
+      "installation": "MCB Quantico"
+    },
+    "twentynine_palms_ca": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Twentynine Palms",
+      "state": "CA",
+      "installation": "MCAGCC"
+    },
+    "hampton_va": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Hampton",
+      "state": "VA",
+      "installation": "Langley AFB"
+    },
+    "dayton_oh": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Dayton",
+      "state": "OH",
+      "installation": "Wright-Patterson AFB"
+    },
+    "colorado_springs_co": {
+      "lodging": 121,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "gsa_known_fy2026",
+      "city": "Colorado Springs",
+      "state": "CO",
+      "installation": "Peterson SFB"
+    },
+    "fairfield_ca": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Fairfield",
+      "state": "CA",
+      "installation": "Travis AFB"
+    },
+    "biloxi_ms": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Biloxi",
+      "state": "MS",
+      "installation": "Keesler AFB"
+    },
+    "san_antonio_tx": {
+      "lodging": 131,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "gsa_known_fy2026",
+      "city": "San Antonio",
+      "state": "TX",
+      "installation": "JBSA"
+    },
+    "eglin_village_fl": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Eglin Village",
+      "state": "FL",
+      "installation": "Eglin AFB"
+    },
+    "pensacola_fl": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Pensacola",
+      "state": "FL",
+      "installation": "NAS Pensacola"
+    },
+    "washington_dc": {
+      "lodging": 258,
+      "mie": 79,
+      "mie_first_last": 59,
+      "source": "gsa_known_fy2026",
+      "city": "Washington",
+      "state": "DC",
+      "installation": "Pentagon / NDW"
+    },
+    "arlington_va": {
+      "lodging": 258,
+      "mie": 79,
+      "mie_first_last": 59,
+      "source": "gsa_known_fy2026",
+      "city": "Arlington",
+      "state": "VA",
+      "installation": "Pentagon"
+    },
+    "bethesda_md": {
+      "lodging": 258,
+      "mie": 79,
+      "mie_first_last": 59,
+      "source": "gsa_known_fy2026",
+      "city": "Bethesda",
+      "state": "MD",
+      "installation": "Walter Reed"
+    },
+    "fort_belvoir_va": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Fort Belvoir",
+      "state": "VA",
+      "installation": "Fort Belvoir"
+    },
+    "aberdeen_md": {
+      "lodging": 110,
+      "mie": 68,
+      "mie_first_last": 51,
+      "source": "standard_conus",
+      "city": "Aberdeen",
+      "state": "MD",
+      "installation": "APG"
+    },
+    "honolulu_hi": {
+      "lodging": 287,
+      "mie": 91,
+      "mie_first_last": 68,
+      "source": "gsa_known_fy2026",
+      "city": "Honolulu",
+      "state": "HI",
+      "installation": "Schofield / JBPHH"
+    }
+  }
+}
