@@ -504,35 +504,6 @@ export default function App() {
                     ) : (
                       <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px 18px 18px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", overflow: "hidden" }}>
 
-                        {/* Tool pills */}
-                        {msg.tool_calls && msg.tool_calls.length > 0 && (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "12px 16px 0" }}>
-                            {msg.tool_calls.map(tc => (
-                              <span key={tc.tool} style={{ fontSize: 11, fontFamily: "monospace", padding: "2px 10px", borderRadius: 999, border: "1px solid #fecdd3", color: "#be123c", background: "#fff1f2" }}>{tc.tool}</span>
-                            ))}
-                          </div>
-                        )}
-
-                        {/* Reasoning trace */}
-                        {msg.tool_calls && msg.tool_calls.length > 0 && (
-                          <div style={{ padding: "8px 16px 0" }}>
-                            <button onClick={() => toggleReasoning(msg.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
-                              <span>{showReasoning[msg.id] ? "▾" : "▸"}</span>
-                              {showReasoning[msg.id] ? "Hide" : "Show"} reasoning ({msg.tool_calls.length} steps)
-                            </button>
-                            {showReasoning[msg.id] && (
-                              <div style={{ marginTop: 6, background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 6, padding: "10px 14px", fontFamily: "monospace", fontSize: 11, color: "#64748b", lineHeight: 1.8 }}>
-                                {msg.tool_calls.map((tc, idx) => (
-                                  <div key={idx}>
-                                    <div style={{ color: "#475569" }}>⊙ {tc.label}</div>
-                                    <div style={{ color: "#94a3b8", paddingLeft: 14 }}>→ {tc.result_summary}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-
                         {/* Response — rendered markdown */}
                         <div style={{ padding: "12px 16px" }}>
                           {renderMarkdown(msg.content)}

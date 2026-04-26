@@ -221,11 +221,12 @@ def _parse_agent_output(raw: str) -> tuple[str, list[dict], dict | None]:
                     missing_fields.append(field)
 
         form_output = {
-            "form_name":     form_name,
-            "filled_fields": filled_fields,
+            "form_name":      form_name,
+            "filled_fields":  filled_fields,
             "missing_fields": missing_fields,
-            "pdf_path":      f"/api/forms/{recent_pdf.name}" if recent_pdf else None,
-            "summary":       txt_content,
+            "pdf_available":  recent_pdf is not None,
+            "pdf_url":        f"/api/forms/{recent_pdf.name}" if recent_pdf else None,
+            "txt_summary":    txt_content,
         }
 
     answer = "\n".join(answer_lines).strip()
