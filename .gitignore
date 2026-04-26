@@ -1,6 +1,5 @@
 .env
 venv/
-vectorstore/
 data/**/*.pdf
 __pycache__/
 *.pyc
