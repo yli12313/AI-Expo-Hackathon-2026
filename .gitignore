@@ -5,3 +5,6 @@ data/**/*.pdf
 __pycache__/
 *.pyc
 .DS_Store
+output/
+profile.json
+CLAUDE_CONTEXT.md
