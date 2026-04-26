@@ -1,278 +1,220 @@
-import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-type AgentStatus = "idle" | "thinking" | "tool_call" | "streaming" | "done" | "error";
-type ToolName = "search_regulations" | "get_per_diem" | "calculate_travel_cost" | "fill_form";
-
-interface ToolTrace {
-  tool: ToolName;
-  label: string;
-  result_summary: string;
-  status: "running" | "done" | "error";
-}
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-  traces?: ToolTrace[];
-  cost_breakdown?: CostBreakdown;
-  form_output?: FormOutput;
-  citations?: Citation[];
-}
-
-interface CostBreakdown {
-  destination: string;
-  travel_days: number;
-  lodging: { nights: number; rate: number; total: number };
-  meals: { days: number; daily_rate: number; first_last_rate: number; total: number };
-  mileage: { mode: string; one_way_miles: number; rate_per_mile: number; total: number; note: string };
-  grand_total: number;
-}
+type Tab = "travel" | "leave" | "regulation" | "eval";
+type Status = "idle" | "thinking" | "searching" | "calculating" | "done" | "error";
 
 interface FormOutput {
   form_name: string;
-  filled_fields: Record<string, string>;
-  missing_fields: string[];
-  pdf_path: string | null;
-  summary: string;
+  pdf_available: boolean;
+  pdf_url: string;
+  txt_summary: string;
 }
 
-interface Citation {
-  source: string;
-  section: string;
-  text: string;
-  score: number;
+interface Message {
+  role: "user" | "assistant" | "system";
+  content: string;
+  timestamp: Date;
+  tools_used?: string[];
+  reasoning_steps?: string[];
+  form_output?: FormOutput | null;
 }
 
+// Matches POST /api/profile spec exactly
 interface SoldierProfile {
   name_last_first: string;
   rank: string;
   grade: string;
+  ssn_last4: string;
   unit: string;
   installation: string;
-  supervisor_name: string;
 }
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// Health response shape
+interface HealthStatus {
+  status: "ok" | "error";
+  ollama: boolean;
+  vector_store_chunks: number;
+  gsa_cache_loaded: boolean;
+  model: string;
+}
 
-const TOOL_DISPLAY: Record<ToolName, { icon: string; label: string; color: string }> = {
-  search_regulations:    { icon: "\uD83D\uDD0D", label: "Searching Regs",  color: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
-  get_per_diem:          { icon: "\uD83D\uDCB2", label: "Per Diem Lookup", color: "text-green-400 bg-green-400/10 border-green-400/20" },
-  calculate_travel_cost: { icon: "\uD83E\uDDEE", label: "Cost Calc",      color: "text-amber-400 bg-amber-400/10 border-amber-400/20" },
-  fill_form:             { icon: "\uD83D\uDCCB", label: "Filling Form",   color: "text-cyan-400 bg-cyan-400/10 border-cyan-400/20" },
-};
+const RANKS_WITH_GRADES: { rank: string; grade: string }[] = [
+  { rank: "PVT",  grade: "E-1" }, { rank: "PV2",  grade: "E-2" },
+  { rank: "PFC",  grade: "E-3" }, { rank: "SPC",  grade: "E-4" },
+  { rank: "CPL",  grade: "E-4" }, { rank: "SGT",  grade: "E-5" },
+  { rank: "SSG",  grade: "E-6" }, { rank: "SFC",  grade: "E-7" },
+  { rank: "MSG",  grade: "E-8" }, { rank: "1SG",  grade: "E-8" },
+  { rank: "SGM",  grade: "E-9" }, { rank: "CSM",  grade: "E-9" },
+  { rank: "2LT",  grade: "O-1" }, { rank: "1LT",  grade: "O-2" },
+  { rank: "CPT",  grade: "O-3" }, { rank: "MAJ",  grade: "O-4" },
+  { rank: "LTC",  grade: "O-5" }, { rank: "COL",  grade: "O-6" },
+  { rank: "WO1",  grade: "W-1" }, { rank: "CW2",  grade: "W-2" },
+  { rank: "CW3",  grade: "W-3" }, { rank: "CW4",  grade: "W-4" },
+  { rank: "CW5",  grade: "W-5" },
+];
 
-const STATUS_DISPLAY: Record<AgentStatus, { label: string; color: string; pulse: boolean }> = {
-  idle:      { label: "Ready",        color: "bg-zinc-700/50 text-zinc-400",                              pulse: false },
-  thinking:  { label: "Reasoning",    color: "bg-amber-500/15 text-amber-400 border border-amber-500/25", pulse: true },
-  tool_call: { label: "Tool Active",  color: "bg-blue-500/15 text-blue-400 border border-blue-500/25",    pulse: true },
-  streaming: { label: "Responding",   color: "bg-green-500/15 text-green-400 border border-green-500/25", pulse: true },
-  done:      { label: "Complete",     color: "bg-green-500/15 text-green-400 border border-green-500/25", pulse: false },
-  error:     { label: "Error",        color: "bg-red-500/15 text-red-400 border border-red-500/25",       pulse: false },
-};
-
-const EXAMPLE_QUERIES = [
-  { text: "Send SPC Rivera to Fort Moore, GA for 5 days starting July 10, driving POV from Fort Liberty", icon: "\u2708" },
-  { text: "I need 10 days ordinary leave starting June 3 to visit family in Texas",                       icon: "\uD83D\uDCC4" },
-  { text: "What does the JTR say about POV mileage reimbursement?",                                       icon: "\uD83D\uDCD6" },
-  { text: "Is the GTC mandatory for a 2-day TDY?",                                                        icon: "\u2753" },
+const INSTALLATIONS = [
+  "Fort Liberty", "Fort Moore", "Fort Bragg", "Fort Hood",
+  "Fort Campbell", "Fort Bliss", "Fort Drum", "Fort Stewart",
+  "Fort Wainwright", "Fort Irwin", "Fort Carson", "Fort Riley",
+  "Joint Base Lewis-McChord", "Fort Benning", "Fort Gordon",
 ];
 
 const DEFAULT_PROFILE: SoldierProfile = {
   name_last_first: "Rivera, Maria J.",
   rank: "SPC",
   grade: "E-4",
-  unit: "1-503 INF, 82nd ABN DIV",
+  ssn_last4: "",
+  unit: "1-503 INF, 82nd ABN",
   installation: "Fort Liberty",
-  supervisor_name: "SGT Johnson",
 };
 
-// ─── Components ──────────────────────────────────────────────────────────────
+const TAB_CONFIG: Record<Tab, { label: string; icon: string; description: string }> = {
+  travel:     { label: "TDY Travel",   icon: "\u2708",     description: "Plan trips, per diem, DD 1610" },
+  leave:      { label: "Leave / HR",   icon: "\uD83D\uDCC4", description: "DA 31, personnel actions" },
+  regulation: { label: "Regulations", icon: "\uD83D\uDCD6", description: "JTR, ARs, AFIs lookup" },
+  eval:       { label: "Evaluations", icon: "\u2B50",       description: "Counseling, NCOERs, OERs" },
+};
 
-function StatusChip({ status }: { status: AgentStatus }) {
-  const s = STATUS_DISPLAY[status];
+const STATUS_CONFIG: Record<Status, { label: string; color: string; pulse: boolean }> = {
+  idle:        { label: "Ready",          color: "bg-zinc-600 text-zinc-300", pulse: false },
+  thinking:    { label: "Thinking...",    color: "bg-crimson-700/30 text-crimson-300 border border-crimson-600/40", pulse: true },
+  searching:   { label: "Searching Regs",color: "bg-navy-700/40 text-navy-300 border border-navy-500/40", pulse: true },
+  calculating: { label: "Calculating",   color: "bg-crimson-700/30 text-crimson-300 border border-crimson-600/40", pulse: true },
+  done:        { label: "Complete",      color: "bg-green-500/20 text-green-400 border border-green-500/30", pulse: false },
+  error:       { label: "Error",         color: "bg-red-500/20 text-red-400 border border-red-500/30", pulse: false },
+};
+
+// Official Duty Line demo prompts — mapped to their primary tab
+// Prompt 5 (cross-domain) appears in both travel + leave as a shared stress-test
+const EXAMPLE_QUERIES: Record<Tab, { label: string; prompt: string }[]> = {
+  travel: [
+    {
+      label: "TDY Planning",
+      prompt: "I need to plan TDY travel from Fort Liberty to San Diego for 5 days next month. What's my per diem rate and what forms do I need?",
+    },
+    {
+      label: "Form Generation",
+      prompt: "Generate a completed DA Form 1610 for a 3-day TDY trip to Washington D.C. for a training conference.",
+    },
+    {
+      label: "Cross-Domain / Stress Test",
+      prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?",
+    },
+  ],
+  leave: [
+    {
+      label: "Leave Workflow",
+      prompt: "I want to request 10 days of annual leave starting June 15th. Walk me through the approval process and any blackout dates I should know about.",
+    },
+    {
+      label: "Cross-Domain / Stress Test",
+      prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?",
+    },
+  ],
+  regulation: [
+    {
+      label: "Regulation Lookup",
+      prompt: "What are the current Army regulations on unauthorized absence? I need citations.",
+    },
+    {
+      label: "Cross-Domain / Stress Test",
+      prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?",
+    },
+  ],
+  eval: [
+    {
+      label: "Regulation Lookup",
+      prompt: "What are the current Army regulations on unauthorized absence? I need citations.",
+    },
+    {
+      label: "Leave Workflow",
+      prompt: "I want to request 10 days of annual leave starting June 15th. Walk me through the approval process and any blackout dates I should know about.",
+    },
+  ],
+};
+
+/* ── Status Chip ─────────────────────────────────────────────────── */
+function StatusChip({ status }: { status: Status }) {
+  const cfg = STATUS_CONFIG[status];
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium tracking-wide ${s.color} ${s.pulse ? "animate-pulse-amber" : ""}`}>
-      <span className={`w-1.5 h-1.5 rounded-full bg-current ${s.pulse ? "" : "opacity-60"}`} />
-      {s.label}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cfg.color} ${cfg.pulse ? "animate-pulse-amber" : ""}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.pulse ? "bg-current" : "bg-current opacity-60"}`} />
+      {cfg.label}
     </span>
   );
 }
 
-function ToolTraceItem({ trace }: { trace: ToolTrace }) {
-  const display = TOOL_DISPLAY[trace.tool];
+/* ── Reasoning Steps ─────────────────────────────────────────────── */
+function ReasoningSteps({ steps }: { steps: string[] }) {
+  const [open, setOpen] = useState(false);
+  if (!steps || steps.length === 0) return null;
   return (
-    <div className={`animate-slide-in flex items-start gap-2 px-3 py-2 rounded-md border text-xs font-mono ${display.color} ${trace.status === "running" ? "animate-thinking" : ""}`}>
-      <span className="text-sm mt-0.5 shrink-0">{display.icon}</span>
-      <div className="min-w-0">
-        <span className="font-semibold">{trace.label}</span>
-        {trace.result_summary && (
-          <p className="text-[11px] opacity-75 mt-0.5 truncate">{trace.result_summary}</p>
-        )}
-      </div>
-      {trace.status === "running" && (
-        <div className="ml-auto flex gap-0.5 items-center shrink-0">
-          <span className="w-1 h-1 rounded-full bg-current animate-bounce" style={{ animationDelay: "0ms" }} />
-          <span className="w-1 h-1 rounded-full bg-current animate-bounce" style={{ animationDelay: "150ms" }} />
-          <span className="w-1 h-1 rounded-full bg-current animate-bounce" style={{ animationDelay: "300ms" }} />
-        </div>
-      )}
-      {trace.status === "done" && <span className="ml-auto text-green-400 shrink-0">OK</span>}
-    </div>
-  );
-}
-
-function CostTable({ cost }: { cost: CostBreakdown }) {
-  return (
-    <div className="animate-fade-in rounded-lg border border-slate-700 overflow-hidden mt-3">
-      <div className="bg-olive-800/50 px-4 py-2 border-b border-slate-700">
-        <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider">TDY Cost Estimate - {cost.destination}</h3>
-        <p className="text-[10px] text-zinc-500">{cost.travel_days} days | {cost.mileage.mode}</p>
-      </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-[10px] uppercase text-zinc-500 tracking-wider">
-            <th className="text-left px-4 py-2">Item</th>
-            <th className="text-right px-4 py-2">Rate</th>
-            <th className="text-right px-4 py-2">Qty</th>
-            <th className="text-right px-4 py-2">Total</th>
-          </tr>
-        </thead>
-        <tbody className="text-zinc-300">
-          <tr className="border-t border-slate-700/50">
-            <td className="px-4 py-1.5">Lodging</td>
-            <td className="text-right px-4">${cost.lodging.rate}/night</td>
-            <td className="text-right px-4">{cost.lodging.nights} nights</td>
-            <td className="text-right px-4 font-mono">${cost.lodging.total.toFixed(2)}</td>
-          </tr>
-          <tr className="border-t border-slate-700/50">
-            <td className="px-4 py-1.5">M&IE (full days)</td>
-            <td className="text-right px-4">${cost.meals.daily_rate}/day</td>
-            <td className="text-right px-4">{Math.max(0, cost.meals.days - 2)} days</td>
-            <td className="text-right px-4 font-mono">${(cost.meals.total - cost.meals.first_last_rate * 2).toFixed(2)}</td>
-          </tr>
-          <tr className="border-t border-slate-700/50">
-            <td className="px-4 py-1.5">
-              M&IE (travel days)
-              <span className="text-[10px] text-zinc-500 ml-1">75% per JTR</span>
-            </td>
-            <td className="text-right px-4">${cost.meals.first_last_rate}/day</td>
-            <td className="text-right px-4">2 days</td>
-            <td className="text-right px-4 font-mono">${(cost.meals.first_last_rate * 2).toFixed(2)}</td>
-          </tr>
-          {cost.mileage.total > 0 && (
-            <tr className="border-t border-slate-700/50">
-              <td className="px-4 py-1.5">Mileage (POV)</td>
-              <td className="text-right px-4">${cost.mileage.rate_per_mile}/mi</td>
-              <td className="text-right px-4">{cost.mileage.one_way_miles} mi x 2</td>
-              <td className="text-right px-4 font-mono">${cost.mileage.total.toFixed(2)}</td>
-            </tr>
-          )}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-amber-500/30 bg-olive-800/30">
-            <td colSpan={3} className="px-4 py-2 font-semibold text-amber-400">Total Estimate</td>
-            <td className="text-right px-4 py-2 font-bold font-mono text-amber-400 text-base">${cost.grand_total.toFixed(2)}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  );
-}
-
-function CitationCard({ citation }: { citation: Citation }) {
-  return (
-    <div className="animate-fade-in rounded border border-slate-700 bg-slate-800/50 px-3 py-2 text-xs">
-      <div className="flex items-center justify-between mb-1">
-        <span className="font-semibold text-blue-400">{citation.source}</span>
-        <span className="text-zinc-500 font-mono">{(citation.score * 100).toFixed(0)}% match</span>
-      </div>
-      <p className="text-[10px] text-amber-400/80 mb-1">{citation.section}</p>
-      <p className="text-zinc-400 leading-relaxed">{citation.text.slice(0, 200)}...</p>
-    </div>
-  );
-}
-
-function FormPreview({ form }: { form: FormOutput }) {
-  return (
-    <div className="animate-fade-in rounded-lg border border-slate-700 overflow-hidden mt-3">
-      <div className="bg-olive-800/50 px-4 py-2 border-b border-slate-700 flex items-center justify-between">
-        <div>
-          <h3 className="text-xs font-semibold text-cyan-400 uppercase tracking-wider">{form.form_name}</h3>
-          <p className="text-[10px] text-zinc-500">{Object.keys(form.filled_fields).length} fields filled</p>
-        </div>
-        {form.pdf_path && (
-          <a
-            href={form.pdf_path}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1 rounded bg-olive-700 text-amber-400 text-xs font-medium border border-olive-600/50 hover:bg-olive-600 transition-all"
-          >
-            Download PDF
-          </a>
-        )}
-      </div>
-      <div className="px-4 py-3 space-y-1 max-h-48 overflow-y-auto">
-        {Object.entries(form.filled_fields).map(([field, value]) => (
-          <div key={field} className="flex text-xs">
-            <span className="text-zinc-500 w-40 shrink-0 font-mono">{field}</span>
-            <span className="text-zinc-300">{value}</span>
-          </div>
-        ))}
-      </div>
-      {form.missing_fields.length > 0 && (
-        <div className="px-4 py-2 bg-amber-500/5 border-t border-amber-500/20">
-          <p className="text-[10px] text-amber-400 font-semibold mb-1">MISSING FIELDS</p>
-          <div className="flex flex-wrap gap-1">
-            {form.missing_fields.map((f) => (
-              <span key={f} className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-mono">{f}</span>
-            ))}
-          </div>
+    <div className="mb-2">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 text-[10px] text-navy-300 hover:text-navy-200 transition-colors font-mono"
+      >
+        <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
+        {open ? "Hide" : "Show"} reasoning ({steps.length} steps)
+      </button>
+      {open && (
+        <div className="mt-1.5 pl-3 border-l border-navy-700/50 space-y-0.5">
+          {steps.map((s, i) => (
+            <p key={i} className="text-[10px] font-mono text-zinc-500 leading-relaxed whitespace-pre-wrap">{s}</p>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
+/* ── Message Bubble ──────────────────────────────────────────────── */
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} animate-fade-in`}>
-      <div className={`max-w-[85%] ${isUser ? "" : "w-full max-w-2xl"}`}>
-        <div className={`rounded-lg px-4 py-3 ${
-          isUser
-            ? "bg-olive-700/80 text-zinc-100 rounded-br-sm border border-olive-600/30"
-            : "bg-slate-800/80 text-zinc-200 border border-slate-700/50 rounded-bl-sm"
-        }`}>
-          {/* Tool traces */}
-          {!isUser && msg.traces && msg.traces.length > 0 && (
-            <div className="space-y-1.5 mb-3">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Agent Reasoning</p>
-              {msg.traces.map((t, i) => <ToolTraceItem key={i} trace={t} />)}
-            </div>
-          )}
+      <div className={`max-w-[80%] rounded-lg px-4 py-3 ${
+        isUser
+          ? "bg-navy-700 text-zinc-100 rounded-br-sm"
+          : "bg-slate-800 text-zinc-200 border border-slate-700 rounded-bl-sm"
+      }`}>
+        {!isUser && (
+          <>
+            {/* Tool badges */}
+            {msg.tools_used && msg.tools_used.length > 0 && (
+              <div className="flex gap-1.5 mb-2 flex-wrap">
+                {msg.tools_used.map((t) => (
+                  <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-crimson-700/20 text-crimson-300 font-mono border border-crimson-700/30">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+            {/* Reasoning steps — collapsible */}
+            {msg.reasoning_steps && msg.reasoning_steps.length > 0 && (
+              <ReasoningSteps steps={msg.reasoning_steps} />
+            )}
+          </>
+        )}
 
-          {/* Main content */}
-          <div className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+        <div className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</div>
 
-          {/* Cost breakdown */}
-          {msg.cost_breakdown && <CostTable cost={msg.cost_breakdown} />}
+        {/* PDF download — reads form_output per spec */}
+        {!isUser && msg.form_output?.pdf_available && msg.form_output.pdf_url && (
+          <a
+            href={msg.form_output.pdf_url}
+            download
+            className="mt-3 flex items-center gap-2 px-3 py-2 rounded-md bg-crimson-700/20 border border-crimson-600/40 text-crimson-300 text-xs font-medium hover:bg-crimson-700/30 hover:border-crimson-500/50 transition-all w-fit group"
+          >
+            <svg className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download {msg.form_output.form_name} (PDF)
+          </a>
+        )}
 
-          {/* Citations */}
-          {msg.citations && msg.citations.length > 0 && (
-            <div className="mt-3 space-y-1.5">
-              <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold">Sources</p>
-              {msg.citations.map((c, i) => <CitationCard key={i} citation={c} />)}
-            </div>
-          )}
-
-          {/* Form output */}
-          {msg.form_output && <FormPreview form={msg.form_output} />}
-        </div>
-        <div className={`text-[10px] mt-1 px-1 ${isUser ? "text-right text-olive-600" : "text-zinc-600"}`}>
+        <div className={`text-[10px] mt-1.5 ${isUser ? "text-navy-400" : "text-zinc-500"}`}>
           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </div>
       </div>
@@ -280,300 +222,432 @@ function MessageBubble({ msg }: { msg: Message }) {
   );
 }
 
-function ProfilePanel({ profile, onEdit }: { profile: SoldierProfile; onEdit: (p: SoldierProfile) => void }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(profile);
+/* ── Profile Modal ───────────────────────────────────────────────── */
+function ProfileModal({
+  profile,
+  onSave,
+  onClose,
+}: {
+  profile: SoldierProfile;
+  onSave: (p: SoldierProfile) => void;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<SoldierProfile>({ ...profile });
+  const [saving, setSaving] = useState(false);
 
-  function save() {
-    onEdit(draft);
-    setEditing(false);
+  function handleRankChange(rank: string) {
+    const grade = RANKS_WITH_GRADES.find((r) => r.rank === rank)?.grade ?? "";
+    setDraft((d) => ({ ...d, rank, grade }));
   }
 
-  if (!editing) {
-    return (
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Soldier Profile</p>
-          <button onClick={() => setEditing(true)} className="text-[10px] text-amber-400 hover:text-amber-300">Edit</button>
-        </div>
-        <div className="bg-slate-800/50 rounded-md border border-slate-700/50 p-2.5 space-y-1.5">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-full bg-olive-700 flex items-center justify-center text-amber-400 text-[10px] font-bold">
-              {profile.rank}
-            </div>
-            <div>
-              <p className="text-xs font-medium text-zinc-200">{profile.name_last_first}</p>
-              <p className="text-[10px] text-zinc-500">{profile.grade} | {profile.rank}</p>
-            </div>
-          </div>
-          <div className="text-[10px] text-zinc-500 space-y-0.5 pl-9">
-            <p>{profile.unit}</p>
-            <p>{profile.installation}</p>
-            <p>Supervisor: {profile.supervisor_name}</p>
-          </div>
-        </div>
-      </div>
-    );
+  async function handleSave() {
+    if (!draft.name_last_first.trim()) return;
+    setSaving(true);
+    try {
+      // POST /api/profile per spec
+      await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+    } catch {
+      // Non-fatal — profile is still saved locally
+    } finally {
+      setSaving(false);
+      onSave(draft);
+      onClose();
+    }
+  }
+
+  function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.target === e.currentTarget) onClose();
   }
 
   return (
-    <div className="space-y-2">
-      <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold">Edit Profile</p>
-      {(["name_last_first", "rank", "grade", "unit", "installation", "supervisor_name"] as const).map((field) => (
-        <div key={field}>
-          <label className="text-[10px] text-zinc-500 block mb-0.5">{field.replace(/_/g, " ")}</label>
-          <input
-            className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-zinc-200 focus:border-olive-600 focus:outline-none"
-            value={draft[field]}
-            onChange={(e) => setDraft({ ...draft, [field]: e.target.value })}
-          />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={handleBackdrop}>
+      <div className="w-full max-w-sm mx-4 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-100">Edit Soldier Profile</h2>
+            <p className="text-[10px] text-zinc-500 mt-0.5">Saved to backend profile.json</p>
+          </div>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-slate-700 transition-all">&#x2715;</button>
         </div>
-      ))}
-      <div className="flex gap-2">
-        <button onClick={save} className="flex-1 py-1 rounded bg-olive-700 text-amber-400 text-xs font-medium border border-olive-600/50">Save</button>
-        <button onClick={() => setEditing(false)} className="flex-1 py-1 rounded bg-slate-700 text-zinc-400 text-xs border border-slate-600">Cancel</button>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Name */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Name (Last, First MI.)</label>
+            <input
+              type="text"
+              value={draft.name_last_first}
+              onChange={(e) => setDraft((d) => ({ ...d, name_last_first: e.target.value }))}
+              placeholder="Rivera, Maria J."
+              className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
+            />
+          </div>
+
+          {/* Rank + Grade row */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Rank</label>
+              <select
+                value={draft.rank}
+                onChange={(e) => handleRankChange(e.target.value)}
+                className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
+              >
+                {RANKS_WITH_GRADES.map(({ rank }) => (
+                  <option key={rank} value={rank}>{rank}</option>
+                ))}
+              </select>
+            </div>
+            <div className="w-20">
+              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Grade</label>
+              <input
+                type="text"
+                value={draft.grade}
+                readOnly
+                className="w-full rounded-md bg-slate-900/60 border border-slate-700 px-3 py-2 text-sm text-zinc-500 cursor-not-allowed"
+              />
+            </div>
+          </div>
+
+          {/* SSN Last 4 */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">SSN Last 4</label>
+            <input
+              type="password"
+              maxLength={4}
+              value={draft.ssn_last4}
+              onChange={(e) => setDraft((d) => ({ ...d, ssn_last4: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+              placeholder="••••"
+              className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
+            />
+          </div>
+
+          {/* Unit */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Unit</label>
+            <input
+              type="text"
+              value={draft.unit}
+              onChange={(e) => setDraft((d) => ({ ...d, unit: e.target.value }))}
+              placeholder="1-503 INF, 82nd ABN"
+              className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
+            />
+          </div>
+
+          {/* Installation */}
+          <div>
+            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Installation</label>
+            <select
+              value={draft.installation}
+              onChange={(e) => setDraft((d) => ({ ...d, installation: e.target.value }))}
+              className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
+            >
+              {INSTALLATIONS.map((inst) => (
+                <option key={inst} value={inst}>{inst}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-700">
+          <button onClick={onClose} className="px-4 py-2 rounded-md text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-slate-700 transition-all">
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !draft.name_last_first.trim()}
+            className="px-4 py-2 rounded-md bg-navy-700 border border-navy-600/50 text-navy-200 text-xs font-medium hover:bg-navy-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+          >
+            {saving ? "Saving..." : "Save Profile"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Main App ────────────────────────────────────────────────────────────────
+/* ── Sidebar Health Dot ──────────────────────────────────────────── */
+function HealthDot({ on }: { on: boolean | null }) {
+  if (on === null) return <span className="w-2 h-2 rounded-full bg-zinc-600" />;
+  return <span className={`w-2 h-2 rounded-full ${on ? "bg-green-400" : "bg-red-400"}`} />;
+}
 
+/* ── Main App ────────────────────────────────────────────────────── */
 export default function App() {
-  const [status, setStatus] = useState<AgentStatus>("idle");
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [profile, setProfile] = useState<SoldierProfile>(DEFAULT_PROFILE);
-  const [systemHealth, setSystemHealth] = useState({
-    ollama: true,
-    vectorstore: true,
-    gsa_cache: true,
-  });
+  const [activeTab, setActiveTab]         = useState<Tab>("travel");
+  const [status, setStatus]               = useState<Status>("idle");
+  const [messages, setMessages]           = useState<Message[]>([]);
+  const [input, setInput]                 = useState("");
+  const [isStreaming, setIsStreaming]     = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [profile, setProfile]             = useState<SoldierProfile>(DEFAULT_PROFILE);
+  const [health, setHealth]               = useState<HealthStatus | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef       = useRef<HTMLTextAreaElement>(null);
 
-  // Load real health status from backend on mount
-  useEffect(() => {
-    fetch("/api/health")
-      .then((r) => r.json())
-      .then((d) => setSystemHealth({
-        ollama:      !!d.ollama,
-        vectorstore: !!d.vector_store_ready,
-        gsa_cache:   !!d.gsa_cache_loaded,
-      }))
-      .catch(() => setSystemHealth({ ollama: false, vectorstore: false, gsa_cache: false }));
-  }, []);
-
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const isActive = status !== "idle" && status !== "done" && status !== "error";
+  // GET /api/health on mount + every 30s
+  const fetchHealth = useCallback(async () => {
+    try {
+      const res = await fetch("/api/health");
+      if (res.ok) setHealth(await res.json());
+      else setHealth(null);
+    } catch {
+      setHealth(null);
+    }
+  }, []);
 
-  async function handleSubmit(e: FormEvent) {
+  useEffect(() => {
+    fetchHealth();
+    const id = setInterval(fetchHealth, 30_000);
+    return () => clearInterval(id);
+  }, [fetchHealth]);
+
+  // GET /api/profile on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/profile");
+        if (res.ok) {
+          const data: SoldierProfile = await res.json();
+          if (data.name_last_first) setProfile(data);
+        }
+      } catch {
+        // Keep default profile if backend unavailable
+      }
+    })();
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
-    if (!text || isActive) return;
+    if (!text || isStreaming) return;
 
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: text,
-      timestamp: new Date(),
-    };
+    const userMsg: Message = { role: "user", content: text, timestamp: new Date() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setStatus("thinking");
+    setIsStreaming(true);
 
     try {
+      // POST /api/chat — spec shape: {message, tab}
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          profile,
-        }),
+        body: JSON.stringify({ message: text, tab: activeTab }),
       });
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       const data = await res.json();
 
-      const traces: ToolTrace[] = (data.tool_calls || []).map((tc: { tool: ToolName; label: string; result_summary: string }) => ({
-        tool: tc.tool,
-        label: tc.label,
-        result_summary: tc.result_summary,
-        status: "done" as const,
-      }));
+      // Check application-level error per spec: {response: null, error: "..."}
+      if (data.error) {
+        setStatus("error");
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `Error: ${data.error}`, timestamp: new Date(), tools_used: [] },
+        ]);
+        return;
+      }
 
-      const assistantMsg: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.response || "No response received.",
-        timestamp: new Date(),
-        traces,
-        cost_breakdown: data.cost_breakdown || undefined,
-        form_output: data.form_output || undefined,
-        citations: data.citations || undefined,
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
       setStatus("done");
-      setTimeout(() => setStatus("idle"), 2000);
-    } catch {
       setMessages((prev) => [
         ...prev,
         {
-          id: crypto.randomUUID(),
           role: "assistant",
-          content: "Connection error. Ensure the backend is running:\n\n  python3 -m uvicorn app:app --reload --port 8000",
+          content: data.response || "No response received.",
           timestamp: new Date(),
+          tools_used: data.tools_used || [],
+          reasoning_steps: data.reasoning_steps || [],
+          form_output: data.form_output ?? null,
         },
       ]);
+    } catch {
       setStatus("error");
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "Connection error. Make sure the backend is running on port 8000.", timestamp: new Date() },
+      ]);
+    } finally {
+      setIsStreaming(false);
       setTimeout(() => setStatus("idle"), 3000);
     }
   }
 
-  function handleKeyDown(e: KeyboardEvent) {
+  function handleExampleClick(query: string) {
+    setInput(query);
+    inputRef.current?.focus();
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e as unknown as FormEvent);
+      handleSubmit(e);
     }
   }
 
+  // Derived sidebar health values
+  const ollamaOk    = health?.ollama ?? null;
+  const vectorOk    = health ? health.vector_store_chunks > 0 : null;
+  const gsaOk       = health?.gsa_cache_loaded ?? null;
+  const offlineMode = health ? !health.ollama : null;
+
   return (
     <div className="h-screen flex flex-col bg-slate-900">
-      {/* ─── Header ─────────────────────────────────────────────── */}
-      <header className="flex items-center justify-between px-5 py-2.5 bg-slate-800 border-b border-slate-700">
+      {showProfileModal && (
+        <ProfileModal
+          profile={profile}
+          onSave={setProfile}
+          onClose={() => setShowProfileModal(false)}
+        />
+      )}
+
+      {/* Top Bar */}
+      <header className="flex items-center justify-between px-5 py-3 bg-slate-800 border-b border-slate-700">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-olive-700 flex items-center justify-center border border-olive-600/50">
-            <span className="text-amber-400 font-bold text-sm tracking-tight">DL</span>
+          <div className="w-8 h-8 rounded bg-navy-700/40 flex items-center justify-center">
+            <span className="text-crimson-300 font-bold text-sm">DL</span>
           </div>
           <div>
-            <h1 className="text-sm font-bold text-zinc-100 tracking-wider">DUTY LINE</h1>
-            <p className="text-[9px] text-zinc-500 uppercase tracking-[0.2em]">GenAI.mil | Offline Military Assistant</p>
+            <h1 className="text-sm font-semibold text-zinc-100 tracking-wide">DUTY LINE</h1>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-widest">GenAI.mil</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
           <StatusChip status={status} />
-          <div className="h-5 w-px bg-slate-700" />
-          <div className="text-right">
-            <p className="text-xs text-zinc-300 font-medium">{profile.rank} {profile.name_last_first}</p>
-            <p className="text-[10px] text-zinc-500">{profile.unit}</p>
-          </div>
+          <div className="h-4 w-px bg-slate-700" />
+          <button
+            onClick={() => setShowProfileModal(true)}
+            className="text-right group cursor-pointer"
+            title="Edit soldier profile"
+          >
+            <p className="text-xs text-zinc-300 font-medium group-hover:text-navy-200 transition-colors">
+              {profile.rank} {profile.name_last_first}
+              <span className="ml-1.5 text-[10px] text-zinc-600 group-hover:text-crimson-300/60 transition-colors">&#x270E;</span>
+            </p>
+            <p className="text-[10px] text-zinc-500">{profile.unit} | {profile.installation}</p>
+          </button>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* ─── Sidebar ────────────────────────────────────────── */}
-        <aside className="w-60 bg-slate-800/40 border-r border-slate-700 flex flex-col overflow-y-auto">
-          <div className="p-3 space-y-4 flex-1">
-            {/* Profile */}
-            <ProfilePanel profile={profile} onEdit={setProfile} />
-
-            {/* Tools */}
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-2">Agent Tools</p>
-              <div className="space-y-1">
-                {(Object.entries(TOOL_DISPLAY) as [ToolName, typeof TOOL_DISPLAY[ToolName]][]).map(([key, cfg]) => (
-                  <div key={key} className={`flex items-center gap-2 px-2.5 py-1.5 rounded text-xs ${cfg.color.split(" ")[0]} opacity-60`}>
-                    <span>{cfg.icon}</span>
-                    <span className="text-zinc-400">{cfg.label}</span>
+        {/* Sidebar */}
+        <aside className="w-56 bg-slate-800/50 border-r border-slate-700 flex flex-col">
+          <div className="p-3">
+            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-2 px-2">Modules</p>
+            <nav className="space-y-1">
+              {(Object.entries(TAB_CONFIG) as [Tab, typeof TAB_CONFIG[Tab]][]).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all ${
+                    activeTab === key
+                      ? "bg-navy-700/60 text-navy-200 border border-navy-600/50"
+                      : "text-zinc-400 hover:bg-navy-800/40 hover:text-zinc-200"
+                  }`}
+                >
+                  <span className="text-base">{cfg.icon}</span>
+                  <div>
+                    <p className="text-xs font-medium">{cfg.label}</p>
+                    <p className="text-[10px] text-zinc-500">{cfg.description}</p>
                   </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Data Sources */}
-            <div>
-              <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-2">Data Sources</p>
-              <div className="space-y-1 text-[10px]">
-                {[
-                  { label: "JTR (Travel Regs)", domain: "travel" },
-                  { label: "AR 600-8-10 (Leave)", domain: "leave" },
-                  { label: "GSA Per Diem FY2026", domain: "rates" },
-                  { label: "DD 1610, DA 31, DA 4856", domain: "forms" },
-                ].map((ds) => (
-                  <div key={ds.domain} className="flex items-center gap-2 px-2.5 py-1 text-zinc-500">
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400/60" />
-                    {ds.label}
-                  </div>
-                ))}
-              </div>
-            </div>
+                </button>
+              ))}
+            </nav>
           </div>
 
-          {/* System Health */}
-          <div className="p-3 border-t border-slate-700">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-2">System</p>
-            <div className="space-y-1.5">
-              {[
-                { label: "Ollama (qwen2.5:7b)", ok: systemHealth.ollama },
-                { label: "Vector Store", ok: systemHealth.vectorstore },
-                { label: "GSA Cache (42K zips)", ok: systemHealth.gsa_cache },
-              ].map((s) => (
-                <div key={s.label} className="flex items-center gap-2 px-2">
-                  <span className={`w-1.5 h-1.5 rounded-full ${s.ok ? "bg-green-400" : "bg-red-400"}`} />
-                  <span className="text-[10px] text-zinc-500">{s.label}</span>
-                </div>
-              ))}
-              <div className="flex items-center gap-2 px-2 mt-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                <span className="text-[10px] text-amber-400/80 font-medium">OFFLINE MODE</span>
+          {/* Health status — wired to GET /api/health */}
+          <div className="mt-auto p-3 border-t border-slate-700">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 px-2">
+                <HealthDot on={ollamaOk} />
+                <span className="text-[10px] text-zinc-400">
+                  Ollama {health?.model ? `(${health.model})` : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 px-2">
+                <HealthDot on={vectorOk} />
+                <span className="text-[10px] text-zinc-400">
+                  Vector Store {health ? `(${health.vector_store_chunks} chunks)` : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 px-2">
+                <HealthDot on={gsaOk} />
+                <span className="text-[10px] text-zinc-400">GSA Rates Cached</span>
+              </div>
+              <div className="flex items-center gap-2 px-2">
+                <HealthDot on={offlineMode} />
+                <span className="text-[10px] text-zinc-400">Offline Mode</span>
               </div>
             </div>
           </div>
         </aside>
 
-        {/* ─── Main Content ───────────────────────────────────── */}
+        {/* Main Content */}
         <main className="flex-1 flex flex-col">
+          {/* Tab Bar */}
+          <div className="flex items-center gap-1 px-4 py-2 bg-slate-800/30 border-b border-slate-700/50">
+            {(Object.entries(TAB_CONFIG) as [Tab, typeof TAB_CONFIG[Tab]][]).map(([key, cfg]) => (
+              <button
+                key={key}
+                onClick={() => setActiveTab(key)}
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
+                  activeTab === key
+                    ? "bg-navy-700 text-navy-200"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-slate-700/30"
+                }`}
+              >
+                {cfg.icon} {cfg.label}
+              </button>
+            ))}
+          </div>
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center">
-                <div className="w-14 h-14 rounded-xl bg-olive-800/40 border border-olive-700/40 flex items-center justify-center mb-4">
-                  <span className="text-2xl text-amber-400/70">{"\u2B50"}</span>
+                <div className="w-16 h-16 rounded-xl bg-navy-800/50 border border-navy-700/50 flex items-center justify-center mb-4">
+                  <span className="text-3xl text-crimson-300/80">{TAB_CONFIG[activeTab].icon}</span>
                 </div>
-                <h2 className="text-base font-semibold text-zinc-300 mb-1">Welcome to Duty Line</h2>
-                <p className="text-sm text-zinc-500 mb-1">Military admin assistant - fully offline</p>
-                <p className="text-xs text-zinc-600 mb-6">Travel planning | Leave requests | Regulation lookup | Form fill</p>
-                <div className="w-full max-w-xl space-y-2">
-                  <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold mb-2">Try asking</p>
-                  {EXAMPLE_QUERIES.map((q) => (
+                <h2 className="text-lg font-semibold text-zinc-200 mb-1">{TAB_CONFIG[activeTab].label}</h2>
+                <p className="text-sm text-zinc-500 mb-6">{TAB_CONFIG[activeTab].description}</p>
+                <div className="w-full max-w-lg space-y-2">
+                  <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold mb-2">Demo prompts</p>
+                  {EXAMPLE_QUERIES[activeTab].map(({ label, prompt }) => (
                     <button
-                      key={q.text}
-                      onClick={() => { setInput(q.text); inputRef.current?.focus(); }}
-                      className="w-full text-left px-4 py-2.5 rounded-lg bg-slate-800/40 border border-slate-700/40 text-sm text-zinc-400 hover:text-zinc-200 hover:border-olive-600/40 hover:bg-slate-800/70 transition-all group"
+                      key={prompt}
+                      onClick={() => handleExampleClick(prompt)}
+                      className="w-full text-left px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-navy-600/50 hover:bg-slate-800 transition-all group"
                     >
-                      <span className="mr-2 opacity-50 group-hover:opacity-100 transition-opacity">{q.icon}</span>
-                      {q.text}
+                      <span className="inline-block text-[9px] uppercase tracking-widest font-semibold px-1.5 py-0.5 rounded bg-crimson-700/20 text-crimson-300 border border-crimson-700/30 mb-1.5">
+                        {label}
+                      </span>
+                      <p className="text-sm text-zinc-400 group-hover:text-zinc-200 transition-colors leading-relaxed">{prompt}</p>
                     </button>
                   ))}
                 </div>
-                <p className="text-[10px] text-zinc-700 mt-8">
-                  ReAct Agent | qwen2.5:7b | ChromaDB | 4 tools | All data local
-                </p>
               </div>
             ) : (
               <div className="space-y-4 max-w-3xl mx-auto">
-                {messages.map((msg) => (
-                  <MessageBubble key={msg.id} msg={msg} />
+                {messages.map((msg, i) => (
+                  <MessageBubble key={i} msg={msg} />
                 ))}
-                {isActive && (
+                {isStreaming && (
                   <div className="flex justify-start animate-fade-in">
-                    <div className="bg-slate-800/80 border border-slate-700/50 rounded-lg px-4 py-3 rounded-bl-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="flex gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-bounce" style={{ animationDelay: "300ms" }} />
-                        </div>
-                        <span className="text-xs text-zinc-500">
-                          {status === "thinking" && "Reasoning..."}
-                          {status === "tool_call" && "Executing tool..."}
-                          {status === "streaming" && "Generating response..."}
-                        </span>
+                    <div className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 rounded-bl-sm">
+                      <div className="flex gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-crimson-400 animate-bounce" style={{ animationDelay: "0ms" }} />
+                        <span className="w-2 h-2 rounded-full bg-crimson-400 animate-bounce" style={{ animationDelay: "150ms" }} />
+                        <span className="w-2 h-2 rounded-full bg-crimson-400 animate-bounce" style={{ animationDelay: "300ms" }} />
                       </div>
                     </div>
                   </div>
@@ -584,31 +658,30 @@ export default function App() {
           </div>
 
           {/* Input */}
-          <div className="px-6 py-3 bg-slate-800/20 border-t border-slate-700/50">
+          <div className="px-6 py-3 bg-slate-800/30 border-t border-slate-700/50">
             <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
               <div className="flex gap-2 items-end">
-                <div className="flex-1 relative">
+                <div className="flex-1">
                   <textarea
                     ref={inputRef}
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
-                    placeholder="Describe your task — TDY trip, leave request, regulation question..."
+                    placeholder={`Ask about ${TAB_CONFIG[activeTab].label.toLowerCase()}...`}
                     rows={1}
-                    disabled={isActive}
-                    className="w-full resize-none rounded-lg bg-slate-800 border border-slate-700 px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-olive-600 focus:ring-1 focus:ring-olive-600/30 disabled:opacity-40 transition-all"
+                    className="w-full resize-none rounded-lg bg-slate-800 border border-slate-700 px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
                   />
                 </div>
                 <button
                   type="submit"
-                  disabled={!input.trim() || isActive}
-                  className="px-5 py-2.5 rounded-lg bg-olive-700 text-amber-400 font-semibold text-sm hover:bg-olive-600 disabled:opacity-25 disabled:cursor-not-allowed transition-all border border-olive-600/50 active:scale-95"
+                  disabled={!input.trim() || isStreaming}
+                  className="px-4 py-2.5 rounded-lg bg-navy-700 text-navy-200 font-medium text-sm hover:bg-navy-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-navy-600/50"
                 >
                   Send
                 </button>
               </div>
-              <p className="text-[10px] text-zinc-700 mt-1.5 text-center">
-                Shift+Enter for new line | All data stays on device | Not legal advice | JTR + AR 600-8-10 + GSA FY2026
+              <p className="text-[10px] text-zinc-600 mt-1.5 text-center">
+                Shift+Enter for new line. All data stays local. Not legal advice.
               </p>
             </form>
           </div>
