@@ -81,7 +81,7 @@ The LLM layer is model-agnostic. The same codebase runs against any OpenAI-compa
 
 | Mode | Use Case | Config |
 |------|----------|--------|
-| `qwen2.5:7b` via Ollama | Air-gapped / SCIF environments, fully offline | Default |
+| `gemma4:e4b` via Ollama | Air-gapped / SCIF environments, fully offline | Default |
 | Claude (Anthropic) | Cloud-connected environments, higher answer quality | `LLM_BASE_URL=https://api.anthropic.com/v1` |
 | GPT-4o (OpenAI) | Cloud-connected, alternative provider | `LLM_BASE_URL=https://api.openai.com/v1` |
 | Any OpenRouter model | Flexible cloud routing | `LLM_BASE_URL=https://openrouter.ai/api/v1` |
@@ -174,7 +174,7 @@ She's driving her POV from Fort Liberty."
 
 ### Prerequisites
 - Python 3.10+
-- [Ollama](https://ollama.com) installed and running with `qwen2.5:7b` pulled
+- [Ollama](https://ollama.com) installed and running with `gemma4:e4b` pulled
 - Node.js 18+
 
 ```bash
@@ -186,7 +186,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # 2. Pull the LLM (first time only)
-ollama pull qwen2.5:7b
+ollama pull gemma4:e4b
 
 # 3. Obtain regulation PDFs and place them in the correct directories
 #    PDFs are sourced from official public sources:

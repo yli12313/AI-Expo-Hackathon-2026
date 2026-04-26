@@ -7,7 +7,7 @@ Single reasoning loop:
   Observe  → receive tool result
   Repeat   → until sufficient, then stream final answer
 
-One model (qwen2.5:7b via Ollama), all tools available every turn.
+One model (gemma4:e4b via Ollama), all tools available every turn.
 No separate classifier. No routing failures.
 
 Usage:
@@ -41,7 +41,7 @@ warnings.filterwarnings("ignore", message=".*existing embedding ID.*")
 # Config
 # ---------------------------------------------------------------------------
 LLM_BASE_URL   = os.getenv("LLM_BASE_URL",  "http://localhost:11434/v1")
-LLM_MODEL      = os.getenv("LLM_MODEL",     "qwen2.5:7b")
+LLM_MODEL      = os.getenv("LLM_MODEL",     "gemma4:e4b")
 LLM_API_KEY    = os.getenv("LLM_API_KEY",   "ollama")
 MAX_ITERATIONS = 5      # max tool calls per turn before forcing a final answer
 HISTORY_WINDOW = 8      # max messages kept in context (sliding window)

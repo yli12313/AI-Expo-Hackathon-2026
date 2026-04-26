@@ -50,7 +50,7 @@ The output is always a **filled artifact** (form, cost breakdown, checklist) plu
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
-│               REACT AGENT  (qwen2.5:7b, Ollama)             │
+│               REACT AGENT  (gemma4:e4b, Ollama)              │
 │                                                              │
 │  Principle: reason first, act only when needed              │
 │                                                              │

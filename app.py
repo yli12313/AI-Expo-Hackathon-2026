@@ -41,7 +41,7 @@ VECTORSTORE  = ROOT / "vectorstore"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
-LLM_MODEL    = os.getenv("LLM_MODEL",    "qwen2.5:7b")
+LLM_MODEL    = os.getenv("LLM_MODEL",    "gemma4:e4b")
 
 # ---------------------------------------------------------------------------
 # App + CORS

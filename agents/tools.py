@@ -842,7 +842,7 @@ def fill_form(form_name: str, field_values: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Tool schemas — OpenAI function-calling format (qwen2.5:7b compatible)
+# Tool schemas — OpenAI function-calling format (gemma4:e4b / Claude / any OpenAI-compatible model)
 # ---------------------------------------------------------------------------
 
 TOOL_SCHEMAS = [

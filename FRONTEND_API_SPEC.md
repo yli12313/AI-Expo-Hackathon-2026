@@ -83,7 +83,7 @@ Check backend + model status. Call on mount to populate sidebar status dots.
 {
   "status": "ok",
   "ollama": true,
-  "model": "qwen2.5:7b",
+  "model": "gemma4:e4b",
   "vector_store_chunks": 2063,
   "vector_store_ready": true,
   "gsa_cache_loaded": true,
