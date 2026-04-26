@@ -112,15 +112,15 @@ The system currently uses a cloud LLM API for fast, high-quality responses suite
 
 ### Model-Agnostic LLM Layer
 
-One environment variable change switches the LLM provider. No code changes:
+The agent connects to any OpenAI-compatible API through a single environment variable. No code changes, no redeployment — just swap the endpoint:
 
-| Mode | Use Case | Config |
-|------|----------|--------|
-| **Claude API** | Production use — fast, high-quality responses | **Default** — `LLM_BASE_URL=https://api.anthropic.com/v1` |
-| OpenRouter | Flexible model selection, cost optimization | `LLM_BASE_URL=https://openrouter.ai/api/v1` |
-| Ollama (future) | Offline/air-gap environments when local hardware supports it | `LLM_BASE_URL=http://localhost:11434/v1` |
+| Provider | Config |
+|----------|--------|
+| **Claude API (default)** | `LLM_BASE_URL=https://api.anthropic.com/v1` |
+| OpenRouter | `LLM_BASE_URL=https://openrouter.ai/api/v1` |
+| Ollama (local) | `LLM_BASE_URL=http://localhost:11434/v1` |
 
-The system is built for where admin work happens — garrison offices, S1 shops, and home stations with network access. The offline path exists in the architecture for future deployment scenarios as local model performance improves.
+This means Duty Line isn't locked into a single vendor. If a better model comes out tomorrow, or if procurement requires a specific provider, or if policy changes which APIs are authorized on a given network — the switch is one line in a config file. The rest of the system (retrieval, cost calculation, form generation) is completely independent of which LLM is behind the endpoint.
 
 ---
 
