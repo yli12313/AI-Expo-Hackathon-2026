@@ -137,7 +137,7 @@ def download_pdf(url: str, dest: Path) -> bool:
     return False
 
 # ---------------------------------------------------------------------------
-# Step 2: Parse PDF → raw text with page numbers
+# Step 2: Parse PDF -> raw text with page numbers
 # ---------------------------------------------------------------------------
 
 def parse_pdf(path: Path) -> list[dict]:
@@ -368,7 +368,7 @@ def main():
         print("\n[!] No PDFs found locally. Download them manually:")
         for src in SOURCES:
             print(f"    {src['url']}")
-            print(f"    → save to: {src['local_path']}\n")
+            print(f"    -> save to: {src['local_path']}\n")
         print("Then re-run: python3 ingest.py")
         sys.exit(1)
 
@@ -387,7 +387,7 @@ def main():
             chunk["branch"]      = src["branch"]
             chunk["doc_type"]    = src["doc_type"]
 
-        print(f"  [ok] {len(pages)} pages → {len(sections)} sections → {len(chunks)} chunks")
+        print(f"  [ok] {len(pages)} pages -> {len(sections)} sections -> {len(chunks)} chunks")
         all_chunks.extend(chunks)
 
     print(f"\nTotal chunks across all documents: {len(all_chunks)}")
