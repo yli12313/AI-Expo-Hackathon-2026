@@ -1,6 +1,23 @@
 # Duty Line — Demo Script
 
-3:30 walkthrough for judges. Each module builds to a deliverable.
+3:30 walkthrough for judges. Each step builds to a deliverable.
+
+---
+
+## Landing Page & Profile Setup (0:30)
+
+1. Open the app — Duty Line logo on dark navy background
+2. Click **Get Started**
+3. Fill in the soldier profile:
+   - Name: **Rivera, Maria J.**
+   - Rank: **SPC**
+   - Grade: **E-4**
+   - Unit: **1-503 INF, 82nd ABN**
+   - Installation: **Fort Liberty**
+   - Supervisor: **SGT Johnson**
+4. Click **Continue** — enters the main assistant
+
+*"This profile auto-fills every form the soldier generates. Set it once, never re-type your name and unit again."*
 
 ---
 
@@ -19,25 +36,20 @@
 **Prompt 3:**
 > Generate the DD 1610 for this trip.
 
-*Filled PDF download. 2-4 hours of work → 60 seconds.*
+*Filled PDF download with SPC Rivera's profile pre-populated. 2-4 hours of work → 60 seconds.*
 
 ---
 
-## Leave / HR (1:00) — ends with a filled DA 31
+## Leave / HR (0:30) — ends with a filled DA 31
 
 **Prompt 1:**
-> I need 10 days ordinary leave starting June 15 to visit family in Texas. Am I eligible?
+> I need 10 days ordinary leave starting June 15 to visit family in Texas. Am I eligible and can you fill the DA 31?
 
-*Regulation lookup + eligibility check with AR 600-8-10 citation. (~8 sec response)*
-
-**Prompt 2:**
-> Fill the DA 31.
-
-*PDF download with profile auto-populated. 1-2 hours → 30 seconds.*
+*Eligibility check from AR 600-8-10 + filled DA 31 PDF. Profile fields already populated. 1-2 hours → 30 seconds.*
 
 ---
 
-## Regulations (0:30) — instant policy answer
+## Regulations (0:20) — instant policy answer
 
 **Prompt 1:**
 > Is the government travel card mandatory for TDY?
@@ -48,4 +60,4 @@
 
 ## Closing (0:30)
 
-"Every prompt you just saw replaces hours of manual work. Duty Line searches regulations, does the math, and hands you a completed PDF — in seconds. Across 3 million service members, that's millions of hours returned to mission readiness every year."
+"Every prompt you just saw replaces hours of manual work — looking up regulations, doing per diem math by hand, hunting for forms, filling fields one at a time. Duty Line does it in seconds, with citations, and hands you a completed PDF ready for signature. Across 3 million service members, that's millions of hours returned to mission readiness every year."
