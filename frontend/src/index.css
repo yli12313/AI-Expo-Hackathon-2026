@@ -1,113 +1,36 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 
 @theme {
-  /* Core dark government palette */
-  --color-slate-900: #0a0c0f;
-  --color-slate-800: #0f1318;
-  --color-slate-750: #131820;
-  --color-slate-700: #1a2130;
-  --color-slate-600: #243044;
-  --color-slate-500: #2e3f5a;
-  --color-slate-400: #4a6080;
-
-  /* Logo navy */
-  --color-navy-900: #060810;
-  --color-navy-800: #0c1020;
-  --color-navy-700: #101830;
-  --color-navy-600: #1a2848;
-  --color-navy-500: #243660;
-  --color-navy-400: #2e4878;
-  --color-navy-300: #4a6fa8;
-  --color-navy-200: #7b9fd4;
-  --color-navy-100: #b8cfe8;
-  --color-navy-50:  #e8f0f8;
-
-  /* Logo crimson */
-  --color-crimson-700: #3d0810;
-  --color-crimson-600: #5c1020;
-  --color-crimson-500: #7c1830;
-  --color-crimson-400: #9e2040;
-  --color-crimson-300: #c43050;
-  --color-crimson-200: #e05070;
-  --color-crimson-100: #f0a0b0;
-
-  /* Functional */
-  --color-green-400:  #22c55e;
-  --color-green-500:  #16a34a;
-  --color-red-400:    #ef4444;
-  --color-amber-400:  #f59e0b;
-  --color-zinc-600:   #374151;
-  --color-zinc-500:   #4b5563;
-  --color-zinc-400:   #6b7280;
-  --color-zinc-300:   #9ca3af;
-  --color-zinc-200:   #d1d5db;
-  --color-zinc-100:   #f3f4f6;
-
-  --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --color-olive-900: #1a1f16;
+  --color-olive-800: #252b1f;
+  --color-olive-700: #333d29;
+  --color-olive-600: #445233;
+  --color-olive-500: #5a6e3f;
+  --color-slate-900: #0f1419;
+  --color-slate-800: #1a2029;
+  --color-slate-700: #242d3a;
+  --color-slate-600: #374151;
+  --color-amber-400: #fbbf24;
+  --color-amber-500: #f59e0b;
+  --color-green-400: #4ade80;
+  --color-red-400: #f87171;
+  --color-blue-400: #60a5fa;
+  --color-cyan-400: #22d3ee;
+  --color-zinc-300: #d4d4d8;
+  --color-zinc-400: #a1a1aa;
+  --color-zinc-500: #71717a;
+  --color-zinc-600: #52525b;
+  --color-zinc-700: #3f3f46;
+  --font-mono: "SF Mono", "Consolas", "Liberation Mono", monospace;
 }
 
 body {
-  background-color: #0a0c0f;
-  color: #c8d4e0;
-  font-family: "IBM Plex Sans", system-ui, sans-serif;
-  font-size: 14px;
+  background-color: var(--color-slate-900);
+  color: #d4d4d8;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Thin classification-style top stripe */
-body::before {
-  content: 'UNCLASSIFIED // FOR OFFICIAL USE ONLY';
-  display: block;
-  width: 100%;
-  background: #16a34a;
-  color: #fff;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.15em;
-  text-align: center;
-  padding: 3px 0;
-  position: fixed;
-  top: 0;
-  z-index: 1000;
-}
-
-#root {
-  padding-top: 20px;
-  height: 100vh;
-}
-
 ::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: #0f1318; }
-::-webkit-scrollbar-thumb { background: #243044; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #2e3f5a; }
-
-@keyframes pulse-status {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
-}
-.animate-pulse-amber { animation: pulse-status 1.8s ease-in-out infinite; }
-
-@keyframes fadeSlideIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.animate-fade-in { animation: fadeSlideIn 0.2s ease-out; }
-
-/* Scanline overlay on sidebar */
-.scanline::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0,0,0,0.08) 2px,
-    rgba(0,0,0,0.08) 4px
-  );
-  pointer-events: none;
-  z-index: 0;
-}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-slate-700); }
