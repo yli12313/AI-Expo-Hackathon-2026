@@ -1,33 +1,61 @@
 @import "tailwindcss";
 
 @theme {
+  /* Camo earth backgrounds (unchanged) */
+  --color-slate-900: #0e0f0b;
+  --color-slate-800: #181a14;
+  --color-slate-700: #23271c;
+  --color-slate-600: #353b28;
+
+  /* Olive structure (unchanged) */
   --color-olive-900: #1a1f16;
   --color-olive-800: #252b1f;
   --color-olive-700: #333d29;
   --color-olive-600: #445233;
   --color-olive-500: #5a6e3f;
-  --color-slate-900: #0f1419;
-  --color-slate-850: #151b24;
-  --color-slate-800: #1a2029;
-  --color-slate-700: #242d3a;
-  --color-slate-600: #374151;
-  --color-amber-400: #fbbf24;
-  --color-amber-500: #f59e0b;
-  --color-amber-300: #fcd34d;
+
+  /* Logo navy — replaces amber as primary accent */
+  --color-navy-900: #0d0f1a;
+  --color-navy-800: #141829;
+  --color-navy-700: #1e2540;
+  --color-navy-600: #2b3560;
+  --color-navy-500: #3a4a82;
+  --color-navy-400: #4a5fa8;
+  --color-navy-300: #7b8fc8;
+  --color-navy-200: #b0bde0;
+  --color-navy-100: #dde3f2;
+
+  /* Logo crimson — replaces amber highlights */
+  --color-crimson-700: #5c0e18;
+  --color-crimson-600: #7c1321;
+  --color-crimson-500: #9e1a2c;
+  --color-crimson-400: #b91c33;
+  --color-crimson-300: #d44057;
+  --color-crimson-200: #e8899a;
+  --color-crimson-100: #f5cdd4;
+
+  /* Keep functional colors */
   --color-green-400: #4ade80;
-  --color-green-500: #22c55e;
-  --color-red-400: #f87171;
-  --color-blue-400: #60a5fa;
-  --color-cyan-400: #22d3ee;
-  --color-zinc-400: #a1a1aa;
-  --color-zinc-300: #d4d4d8;
-  --color-zinc-500: #71717a;
-  --color-zinc-600: #52525b;
+  --color-red-400:   #f87171;
+  --color-blue-400:  #60a5fa;
+  --color-zinc-400:  #a1a1aa;
+  --color-zinc-300:  #d4d4d8;
+  --color-zinc-500:  #71717a;
+  --color-amber-400: #fbbf24;
+
   --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", monospace;
 }
 
 body {
   background-color: var(--color-slate-900);
+  background-image:
+    radial-gradient(ellipse 80px 60px at 12% 18%, rgba(74, 83, 48, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 120px 80px at 55% 8%, rgba(53, 59, 40, 0.22) 0%, transparent 70%),
+    radial-gradient(ellipse 60px 90px at 88% 25%, rgba(90, 110, 63, 0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 100px 50px at 30% 55%, rgba(42, 48, 32, 0.20) 0%, transparent 70%),
+    radial-gradient(ellipse 70px 100px at 75% 70%, rgba(74, 83, 48, 0.15) 0%, transparent 70%),
+    radial-gradient(ellipse 90px 55px at 5% 85%, rgba(53, 59, 40, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 55px 75px at 92% 90%, rgba(35, 39, 28, 0.25) 0%, transparent 70%);
   color: #e4e4e7;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
 }
@@ -36,30 +64,14 @@ body {
 ::-webkit-scrollbar-track { background: var(--color-slate-800); }
 ::-webkit-scrollbar-thumb { background: var(--color-slate-600); border-radius: 3px; }
 
-@keyframes pulse-amber {
+@keyframes pulse-brand {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
-.animate-pulse-amber { animation: pulse-amber 2s ease-in-out infinite; }
+.animate-pulse-amber { animation: pulse-brand 2s ease-in-out infinite; }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-
-@keyframes slideIn {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
-}
-.animate-slide-in { animation: slideIn 0.25s ease-out; }
-
-@keyframes thinking {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-.animate-thinking {
-  background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.08), transparent);
-  background-size: 200% 100%;
-  animation: thinking 2s ease-in-out infinite;
-}
