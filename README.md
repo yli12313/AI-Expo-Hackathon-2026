@@ -58,7 +58,7 @@ All data sourced from SCSP-recommended public sources:
 | Source | Type | What We Use It For |
 |--------|------|--------------------|
 | [Joint Travel Regulations (JTR)](https://www.travel.dod.mil/Policy-Regulations/Joint-Travel-Regulations/) | PDF (1,000+ pages) | TDY entitlement rules — chunked and embedded into vector store |
-| [GSA Per Diem Rates FY2026](https://www.gsa.gov/travel/plan-book/per-diem-rates) | Spreadsheet → JSON cache | Offline per diem lookup: 649 locations, 42,358 ZIP codes |
+| [GSA Per Diem Rates FY2026](https://www.gsa.gov/travel/plan-book/per-diem-rates) | Spreadsheet → JSON cache | Pre-cached per diem lookup: 649 locations, 42,358 ZIP codes |
 | [Army Publishing Directorate](https://armypubs.army.mil/) | PDFs | AR 600-8-10 (leave), AR 623-3 (evals), DA forms (31, 1610, 4856, 4187) |
 | [Air Force e-Publishing](https://www.e-publishing.af.mil) | PDFs | AFI 36-3003 (leave), AFI 36-2406 (evals) |
 | [Navy HR](https://www.mynavyhr.navy.mil/) | PDFs | MILPERSMAN 1050 (leave), BUPERSINST 1610.10F (evals) |
@@ -97,7 +97,7 @@ FastAPI Backend (Python)
      v
 ReAct Agent (Thought -> Action -> Observation loop)
   |-- Tool 1: search_regulations  <- ChromaDB semantic search over 2,063 reg chunks
-  |-- Tool 2: get_per_diem        <- GSA FY2026 rates, 649 locations cached offline
+  |-- Tool 2: get_per_diem        <- GSA FY2026 rates, 649 locations pre-cached
   |-- Tool 3: calculate_travel_cost <- JTR-compliant math (mileage, M&IE, lodging)
   '-- Tool 4: fill_form           <- PDF generation (reportlab + AcroForm fill)
 ```
@@ -114,7 +114,7 @@ The agent connects to any OpenAI-compatible API through a single environment var
 |----------|--------|----------------------|
 | **Claude API (default)** | `LLM_BASE_URL=https://api.anthropic.com/v1` | ~$3–15 input / $15–75 output |
 | OpenRouter (Llama 3.1 70B) | `LLM_BASE_URL=https://openrouter.ai/api/v1` | ~$0.40 input / $0.40 output |
-| Ollama (local) | `LLM_BASE_URL=http://localhost:11434/v1` | $0 — runs on device |
+| Ollama (optional) | `LLM_BASE_URL=http://localhost:11434/v1` | $0 — requires local GPU |
 
 This means Duty Line isn't locked into a single vendor. If a better model comes out tomorrow, or if procurement requires a specific provider, or if policy changes which APIs are authorized on a given network — the switch is one line in a config file. The rest of the system (retrieval, cost calculation, form generation) is completely independent of which LLM is behind the endpoint.
 
@@ -127,7 +127,7 @@ This means Duty Line isn't locked into a single vendor. If a better model comes 
 | Frontend | React 18, Vite, TypeScript, Tailwind CSS |
 | Backend | FastAPI, Uvicorn, Python 3.10+ |
 | Agent | ReAct loop — single model, 4 tools, max 5 iterations |
-| LLM | Model-agnostic (Claude API default, Ollama for offline) |
+| LLM | Model-agnostic via OpenAI-compatible API (Claude API default) |
 | Vector Store | ChromaDB (local, persistent, ~2,063 chunks) |
 | Embeddings | BAAI/bge-small-en-v1.5 (sentence-transformers, runs locally) |
 | Chunking | Semantic — splits at JTR section boundaries (020101. format) |
@@ -141,7 +141,7 @@ This means Duty Line isn't locked into a single vendor. If a better model comes 
 ### Prerequisites
 - Python 3.10+
 - Node.js 18+
-- An LLM API key (Claude API recommended) OR [Ollama](https://ollama.com) for offline use
+- An LLM API key (Claude API recommended, or OpenRouter)
 
 ### Setup
 
@@ -155,7 +155,7 @@ pip install -r requirements.txt
 
 # 2. Configure LLM provider
 cp .env.example .env
-# Edit .env — add your Claude API key (or configure Ollama)
+# Edit .env — add your Claude API key (or OpenRouter key)
 
 # 3. Build the vector store (first time only, ~5-10 min)
 #    Parses all regulation PDFs, chunks semantically, embeds, stores in ChromaDB
