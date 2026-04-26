@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import AnimatedBackground from "./AnimatedBackground";
 
 type Tab = "travel" | "leave" | "regulation" | "eval";
 type Status = "idle" | "thinking" | "searching" | "calculating" | "done" | "error";
@@ -25,7 +26,6 @@ interface Message {
   form_output?: FormOutput | null;
 }
 
-// Matches POST /api/profile + ProfileModel in backend exactly
 interface SoldierProfile {
   name_last_first: string;
   rank: string;
@@ -39,28 +39,29 @@ interface SoldierProfile {
   supervisor_title: string;
 }
 
-// Health response shape
 interface HealthStatus {
-  status: "ok" | "error";
+  status: "ok" | "degraded" | "error";
   ollama: boolean;
-  vector_store_chunks: number;
-  gsa_cache_loaded: boolean;
   model: string;
+  vector_store_chunks: number;
+  vector_store_ready: boolean;
+  gsa_cache_loaded: boolean;
+  offline_ready: boolean;
 }
 
 const RANKS_WITH_GRADES: { rank: string; grade: string }[] = [
-  { rank: "PVT",  grade: "E-1" }, { rank: "PV2",  grade: "E-2" },
-  { rank: "PFC",  grade: "E-3" }, { rank: "SPC",  grade: "E-4" },
-  { rank: "CPL",  grade: "E-4" }, { rank: "SGT",  grade: "E-5" },
-  { rank: "SSG",  grade: "E-6" }, { rank: "SFC",  grade: "E-7" },
-  { rank: "MSG",  grade: "E-8" }, { rank: "1SG",  grade: "E-8" },
-  { rank: "SGM",  grade: "E-9" }, { rank: "CSM",  grade: "E-9" },
-  { rank: "2LT",  grade: "O-1" }, { rank: "1LT",  grade: "O-2" },
-  { rank: "CPT",  grade: "O-3" }, { rank: "MAJ",  grade: "O-4" },
-  { rank: "LTC",  grade: "O-5" }, { rank: "COL",  grade: "O-6" },
-  { rank: "WO1",  grade: "W-1" }, { rank: "CW2",  grade: "W-2" },
-  { rank: "CW3",  grade: "W-3" }, { rank: "CW4",  grade: "W-4" },
-  { rank: "CW5",  grade: "W-5" },
+  { rank: "PVT", grade: "E-1" }, { rank: "PV2", grade: "E-2" },
+  { rank: "PFC", grade: "E-3" }, { rank: "SPC", grade: "E-4" },
+  { rank: "CPL", grade: "E-4" }, { rank: "SGT", grade: "E-5" },
+  { rank: "SSG", grade: "E-6" }, { rank: "SFC", grade: "E-7" },
+  { rank: "MSG", grade: "E-8" }, { rank: "1SG", grade: "E-8" },
+  { rank: "SGM", grade: "E-9" }, { rank: "CSM", grade: "E-9" },
+  { rank: "2LT", grade: "O-1" }, { rank: "1LT", grade: "O-2" },
+  { rank: "CPT", grade: "O-3" }, { rank: "MAJ", grade: "O-4" },
+  { rank: "LTC", grade: "O-5" }, { rank: "COL", grade: "O-6" },
+  { rank: "WO1", grade: "W-1" }, { rank: "CW2", grade: "W-2" },
+  { rank: "CW3", grade: "W-3" }, { rank: "CW4", grade: "W-4" },
+  { rank: "CW5", grade: "W-5" },
 ];
 
 const INSTALLATIONS = [
@@ -71,111 +72,73 @@ const INSTALLATIONS = [
 ];
 
 const DEFAULT_PROFILE: SoldierProfile = {
-  name_last_first: "Rivera, Maria J.",
-  rank: "SPC",
-  grade: "E-4",
-  ssn_last4: "",
-  dod_id: "",
-  unit: "1-503 INF, 82nd ABN",
-  installation: "Fort Liberty",
-  uic: "",
-  supervisor_name: "",
-  supervisor_title: "",
+  name_last_first: "Rivera, Maria J.", rank: "SPC", grade: "E-4",
+  ssn_last4: "", dod_id: "", unit: "1-503 INF, 82nd ABN",
+  installation: "Fort Liberty", uic: "", supervisor_name: "", supervisor_title: "",
 };
 
 const TAB_CONFIG: Record<Tab, { label: string; icon: string; description: string }> = {
-  travel:     { label: "TDY Travel",   icon: "\u2708",     description: "Plan trips, per diem, DD 1610" },
+  travel:     { label: "TDY Travel",   icon: "\u2708",       description: "Per diem, mileage, DD 1610" },
   leave:      { label: "Leave / HR",   icon: "\uD83D\uDCC4", description: "DA 31, personnel actions" },
   regulation: { label: "Regulations", icon: "\uD83D\uDCD6", description: "JTR, ARs, AFIs lookup" },
-  eval:       { label: "Evaluations", icon: "\u2B50",       description: "Counseling, NCOERs, OERs" },
+  eval:       { label: "Evaluations", icon: "\u2B50",       description: "NCOERs, OERs, counseling" },
 };
 
-const STATUS_CONFIG: Record<Status, { label: string; color: string; pulse: boolean }> = {
-  idle:        { label: "Ready",          color: "bg-zinc-600 text-zinc-300", pulse: false },
-  thinking:    { label: "Thinking...",    color: "bg-crimson-700/30 text-crimson-300 border border-crimson-600/40", pulse: true },
-  searching:   { label: "Searching Regs",color: "bg-navy-700/40 text-navy-300 border border-navy-500/40", pulse: true },
-  calculating: { label: "Calculating",   color: "bg-crimson-700/30 text-crimson-300 border border-crimson-600/40", pulse: true },
-  done:        { label: "Complete",      color: "bg-green-500/20 text-green-400 border border-green-500/30", pulse: false },
-  error:       { label: "Error",         color: "bg-red-500/20 text-red-400 border border-red-500/30", pulse: false },
+const STATUS_CONFIG: Record<Status, { label: string; color: string; dot: string; pulse: boolean }> = {
+  idle:        { label: "READY",       color: "text-zinc-400",   dot: "bg-zinc-600",   pulse: false },
+  thinking:    { label: "PROCESSING",  color: "text-navy-200",   dot: "bg-navy-300",   pulse: true  },
+  searching:   { label: "SEARCHING",  color: "text-navy-200",   dot: "bg-navy-300",   pulse: true  },
+  calculating: { label: "CALCULATING",color: "text-navy-200",   dot: "bg-navy-300",   pulse: true  },
+  done:        { label: "COMPLETE",   color: "text-green-400",  dot: "bg-green-400",  pulse: false },
+  error:       { label: "ERROR",      color: "text-red-400",    dot: "bg-red-400",    pulse: false },
 };
 
-// Official Duty Line demo prompts — mapped to their primary tab
-// Prompt 5 (cross-domain) appears in both travel + leave as a shared stress-test
 const EXAMPLE_QUERIES: Record<Tab, { label: string; prompt: string }[]> = {
   travel: [
-    {
-      label: "TDY Planning",
-      prompt: "I need to plan TDY travel from Fort Liberty to San Diego for 5 days next month. What's my per diem rate and what forms do I need?",
-    },
-    {
-      label: "Form Generation",
-      prompt: "Generate a completed DA Form 1610 for a 3-day TDY trip to Washington D.C. for a training conference.",
-    },
-    {
-      label: "Cross-Domain / Stress Test",
-      prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?",
-    },
+    { label: "TDY Planning",           prompt: "I need to plan TDY travel from Fort Liberty to San Diego for 5 days next month. What's my per diem rate and what forms do I need?" },
+    { label: "Form Generation",        prompt: "Generate a completed DA Form 1610 for a 3-day TDY trip to Washington D.C. for a training conference." },
+    { label: "Cross-Domain",           prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?" },
   ],
   leave: [
-    {
-      label: "Leave Workflow",
-      prompt: "I want to request 10 days of annual leave starting June 15th. Walk me through the approval process and any blackout dates I should know about.",
-    },
-    {
-      label: "Cross-Domain / Stress Test",
-      prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?",
-    },
+    { label: "Leave Workflow",         prompt: "I want to request 10 days of annual leave starting June 15th. Walk me through the approval process and any blackout dates I should know about." },
+    { label: "Cross-Domain",           prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?" },
   ],
   regulation: [
-    {
-      label: "Regulation Lookup",
-      prompt: "What are the current Army regulations on unauthorized absence? I need citations.",
-    },
-    {
-      label: "Cross-Domain / Stress Test",
-      prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?",
-    },
+    { label: "Regulation Lookup",      prompt: "What are the current Army regulations on unauthorized absence? I need citations." },
+    { label: "Cross-Domain",           prompt: "My soldier is going on TDY but also needs to request leave the week before — what paperwork do they need and what regulations apply to both?" },
   ],
   eval: [
-    {
-      label: "Regulation Lookup",
-      prompt: "What are the current Army regulations on unauthorized absence? I need citations.",
-    },
-    {
-      label: "Leave Workflow",
-      prompt: "I want to request 10 days of annual leave starting June 15th. Walk me through the approval process and any blackout dates I should know about.",
-    },
+    { label: "Regulation Lookup",      prompt: "What are the current Army regulations on unauthorized absence? I need citations." },
+    { label: "Leave Workflow",         prompt: "I want to request 10 days of annual leave starting June 15th. Walk me through the approval process and any blackout dates I should know about." },
   ],
 };
 
-/* ── Status Chip ─────────────────────────────────────────────────── */
-function StatusChip({ status }: { status: Status }) {
+/* ── Status indicator ────────────────────────────────────────────── */
+function StatusBadge({ status }: { status: Status }) {
   const cfg = STATUS_CONFIG[status];
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cfg.color} ${cfg.pulse ? "animate-pulse-amber" : ""}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.pulse ? "bg-current" : "bg-current opacity-60"}`} />
+    <div className={`flex items-center gap-2 font-mono text-[11px] tracking-wider ${cfg.color}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} ${cfg.pulse ? "animate-pulse-amber" : ""}`} />
       {cfg.label}
-    </span>
+    </div>
   );
 }
 
-/* ── Reasoning Steps ─────────────────────────────────────────────── */
+/* ── Reasoning steps ─────────────────────────────────────────────── */
 function ReasoningSteps({ steps }: { steps: string[] }) {
   const [open, setOpen] = useState(false);
   if (!steps || steps.length === 0) return null;
   return (
-    <div className="mb-2">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-[10px] text-navy-300 hover:text-navy-200 transition-colors font-mono"
-      >
-        <span className={`transition-transform ${open ? "rotate-90" : ""}`}>▶</span>
-        {open ? "Hide" : "Show"} reasoning ({steps.length} steps)
+    <div className="mb-3">
+      <button onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 text-[11px] font-mono text-slate-400 hover:text-navy-200 transition-colors">
+        <span className={`transition-transform duration-150 text-[8px] ${open ? "rotate-90" : ""}`}>▶</span>
+        {open ? "HIDE" : "SHOW"} TRACE ({steps.length} STEPS)
       </button>
       {open && (
-        <div className="mt-1.5 pl-3 border-l border-navy-700/50 space-y-0.5">
+        <div className="mt-2 border-l-2 border-navy-700 pl-3 space-y-1">
           {steps.map((s, i) => (
-            <p key={i} className="text-[10px] font-mono text-zinc-500 leading-relaxed whitespace-pre-wrap">{s}</p>
+            <p key={i} className="text-[11px] font-mono text-slate-400 leading-relaxed whitespace-pre-wrap">{s}</p>
           ))}
         </div>
       )}
@@ -183,60 +146,64 @@ function ReasoningSteps({ steps }: { steps: string[] }) {
   );
 }
 
-/* ── Message Bubble ──────────────────────────────────────────────── */
+/* ── Message bubble ──────────────────────────────────────────────── */
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === "user";
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} animate-fade-in`}>
-      <div className={`max-w-[80%] rounded-lg px-4 py-3 ${
-        isUser
-          ? "bg-navy-700 text-zinc-100 rounded-br-sm"
-          : "bg-slate-800 text-zinc-200 border border-slate-700 rounded-bl-sm"
-      }`}>
+      {!isUser && (
+        <div className="flex-shrink-0 w-7 h-7 rounded bg-navy-700 border border-navy-600 flex items-center justify-center mr-2.5 mt-0.5">
+          <span className="text-[9px] font-mono font-bold text-navy-200">DL</span>
+        </div>
+      )}
+      <div className={`max-w-[78%] ${isUser ? "" : "flex-1"}`}>
         {!isUser && (
           <>
-            {/* Tool badges */}
             {msg.tool_calls && msg.tool_calls.length > 0 && (
               <div className="flex gap-1.5 mb-2 flex-wrap">
-                {msg.tool_calls.map((tc) => (
-                  <span key={tc.tool} className="text-[10px] px-1.5 py-0.5 rounded bg-crimson-700/20 text-crimson-300 font-mono border border-crimson-700/30">
+                {msg.tool_calls.map((tc, i) => (
+                  <span key={`${tc.tool}-${i}`}
+                    className="text-[10px] px-2 py-0.5 rounded-sm font-mono border tracking-wide" style={{ background:"rgba(26,40,72,0.5)", color:"#93b5d8", borderColor:"rgba(74,111,168,0.3)" }}>
                     {tc.tool}
                   </span>
                 ))}
               </div>
             )}
-            {/* Reasoning steps from tool_calls — collapsible */}
             {msg.tool_calls && msg.tool_calls.length > 0 && (
-              <ReasoningSteps steps={msg.tool_calls.map(tc => `⚙ ${tc.label}
-  → ${tc.result_summary}`)} />
+              <ReasoningSteps steps={msg.tool_calls.map(tc => `⚙ ${tc.label}\n  → ${tc.result_summary}`)} />
             )}
           </>
         )}
 
-        <div className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+        <div
+          className={`rounded px-4 py-3 text-sm leading-relaxed ${isUser ? "text-navy-100 rounded-br-none" : "text-zinc-200 rounded-bl-none"}`}
+          style={isUser
+            ? { background: "rgba(26,40,72,0.92)", border: "1px solid rgba(36,54,96,0.7)" }
+            : { background: "rgba(15,19,24,0.92)", border: "1px solid rgba(26,33,48,0.8)" }}
+        >
+          <div className="whitespace-pre-wrap text-sm leading-relaxed">{msg.content}</div>
 
-        {/* PDF download — reads pdf_path from backend form_output */}
-        {!isUser && msg.form_output?.pdf_path && (
-          <a
-            href={msg.form_output.pdf_path}
-            download
-            className="mt-3 flex items-center gap-2 px-3 py-2 rounded-md bg-crimson-700/20 border border-crimson-600/40 text-crimson-300 text-xs font-medium hover:bg-crimson-700/30 hover:border-crimson-500/50 transition-all w-fit group"
-          >
-            <svg className="w-3.5 h-3.5 group-hover:translate-y-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-            </svg>
-            Download {msg.form_output.form_name} (PDF)
-          </a>
-        )}
-        {/* Missing fields warning */}
-        {!isUser && msg.form_output?.missing_fields && msg.form_output.missing_fields.length > 0 && (
-          <div className="mt-2 text-[10px] text-crimson-300/80 font-mono">
-            ⚠ Missing: {msg.form_output.missing_fields.join(", ")}
-          </div>
-        )}
+          {!isUser && msg.form_output?.pdf_path && (
+            <a href={msg.form_output.pdf_path} download
+              className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-sm text-[11px] font-mono bg-navy-800 border border-navy-600 text-navy-200 hover:bg-navy-700 hover:border-navy-500 transition-all group">
+              <svg className="w-3 h-3 group-hover:translate-y-0.5 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              DOWNLOAD {msg.form_output.form_name} (PDF)
+            </a>
+          )}
 
-        <div className={`text-[10px] mt-1.5 ${isUser ? "text-navy-400" : "text-zinc-500"}`}>
+          {!isUser && msg.form_output?.missing_fields && msg.form_output.missing_fields.length > 0 && (
+            <div className="mt-2 text-[10px] font-mono text-crimson-300">
+              ⚠ MISSING FIELDS: {msg.form_output.missing_fields.join(" · ")}
+            </div>
+          )}
+        </div>
+
+        <div className={`text-[9px] font-mono mt-1 ${isUser ? "text-right text-slate-600" : "text-slate-600"}`}>
           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          {isUser && " · YOU"}
+          {!isUser && " · DUTY LINE"}
         </div>
       </div>
     </div>
@@ -244,210 +211,160 @@ function MessageBubble({ msg }: { msg: Message }) {
 }
 
 /* ── Profile Modal ───────────────────────────────────────────────── */
-function ProfileModal({
-  profile,
-  onSave,
-  onClose,
-}: {
-  profile: SoldierProfile;
-  onSave: (p: SoldierProfile) => void;
-  onClose: () => void;
+function ProfileModal({ profile, onSave, onClose }: {
+  profile: SoldierProfile; onSave: (p: SoldierProfile) => void; onClose: () => void;
 }) {
   const [draft, setDraft] = useState<SoldierProfile>({ ...profile });
   const [saving, setSaving] = useState(false);
 
   function handleRankChange(rank: string) {
-    const grade = RANKS_WITH_GRADES.find((r) => r.rank === rank)?.grade ?? "";
-    setDraft((d) => ({ ...d, rank, grade }));
+    const grade = RANKS_WITH_GRADES.find(r => r.rank === rank)?.grade ?? "";
+    setDraft(d => ({ ...d, rank, grade }));
   }
 
   async function handleSave() {
     if (!draft.name_last_first.trim()) return;
     setSaving(true);
     try {
-      // POST /api/profile per spec
       await fetch("/api/profile", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
       });
-    } catch {
-      // Non-fatal — profile is still saved locally
-    } finally {
-      setSaving(false);
-      onSave(draft);
-      onClose();
+    } catch { /* non-fatal */ } finally {
+      setSaving(false); onSave(draft); onClose();
     }
   }
 
-  function handleBackdrop(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.target === e.currentTarget) onClose();
-  }
+  const fieldCls = "w-full bg-slate-900 border border-slate-700 rounded-sm px-3 py-2 text-sm text-zinc-200 placeholder-slate-600 font-mono focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/30 transition-all";
+  const labelCls = "block text-[9px] font-mono tracking-widest text-slate-500 uppercase mb-1";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" onClick={handleBackdrop}>
-      <div className="w-full max-w-sm mx-4 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-fade-in"
+         onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="w-full max-w-md mx-4 bg-slate-800 border border-slate-600 rounded shadow-2xl max-h-[88vh] overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-700 bg-slate-900">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-100">Edit Soldier Profile</h2>
-            <p className="text-[10px] text-zinc-500 mt-0.5">Saved to backend profile.json</p>
+            <p className="text-[9px] font-mono tracking-widest text-slate-500 uppercase">Soldier Profile</p>
+            <h2 className="text-sm font-semibold text-zinc-200 mt-0.5">Edit Record</h2>
           </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-zinc-200 hover:bg-slate-700 transition-all">&#x2715;</button>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center text-slate-500 hover:text-zinc-200 hover:bg-slate-700 rounded transition-all font-mono text-xs">✕</button>
         </div>
 
         <div className="px-5 py-4 space-y-4">
-          {/* Name */}
           <div>
-            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Name (Last, First MI.)</label>
-            <input
-              type="text"
-              value={draft.name_last_first}
-              onChange={(e) => setDraft((d) => ({ ...d, name_last_first: e.target.value }))}
-              placeholder="Rivera, Maria J."
-              className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
-            />
+            <label className={labelCls}>Name (Last, First MI.)</label>
+            <input type="text" value={draft.name_last_first} placeholder="Rivera, Maria J."
+              onChange={e => setDraft(d => ({ ...d, name_last_first: e.target.value }))} className={fieldCls} />
           </div>
 
-          {/* Rank + Grade row */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Rank</label>
-              <select
-                value={draft.rank}
-                onChange={(e) => handleRankChange(e.target.value)}
-                className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
-              >
-                {RANKS_WITH_GRADES.map(({ rank }) => (
-                  <option key={rank} value={rank}>{rank}</option>
-                ))}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="col-span-2">
+              <label className={labelCls}>Rank</label>
+              <select value={draft.rank} onChange={e => handleRankChange(e.target.value)}
+                className={fieldCls}>
+                {RANKS_WITH_GRADES.map(({ rank }) => <option key={rank} value={rank}>{rank}</option>)}
               </select>
             </div>
-            <div className="w-20">
-              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Grade</label>
-              <input
-                type="text"
-                value={draft.grade}
-                readOnly
-                className="w-full rounded-md bg-slate-900/60 border border-slate-700 px-3 py-2 text-sm text-zinc-500 cursor-not-allowed"
-              />
+            <div>
+              <label className={labelCls}>Grade</label>
+              <input type="text" value={draft.grade} readOnly
+                className="w-full bg-slate-900/50 border border-slate-700/50 rounded-sm px-3 py-2 text-sm text-slate-500 font-mono cursor-not-allowed" />
             </div>
           </div>
 
-          {/* SSN Last 4 */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>SSN Last 4</label>
+              <input type="password" maxLength={4} value={draft.ssn_last4} placeholder="••••"
+                onChange={e => setDraft(d => ({ ...d, ssn_last4: e.target.value.replace(/\D/g, "").slice(0, 4) }))} className={fieldCls} />
+            </div>
+            <div>
+              <label className={labelCls}>DOD ID</label>
+              <input type="text" value={draft.dod_id} placeholder="Optional"
+                onChange={e => setDraft(d => ({ ...d, dod_id: e.target.value }))} className={fieldCls} />
+            </div>
+          </div>
+
           <div>
-            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">SSN Last 4</label>
-            <input
-              type="password"
-              maxLength={4}
-              value={draft.ssn_last4}
-              onChange={(e) => setDraft((d) => ({ ...d, ssn_last4: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
-              placeholder="••••"
-              className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
-            />
+            <label className={labelCls}>Unit</label>
+            <input type="text" value={draft.unit} placeholder="1-503 INF, 82nd ABN"
+              onChange={e => setDraft(d => ({ ...d, unit: e.target.value }))} className={fieldCls} />
           </div>
 
-          {/* Unit */}
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Unit</label>
-            <input
-              type="text"
-              value={draft.unit}
-              onChange={(e) => setDraft((d) => ({ ...d, unit: e.target.value }))}
-              placeholder="1-503 INF, 82nd ABN"
-              className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
-            />
-          </div>
-
-          {/* Installation */}
-          <div>
-            <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Installation</label>
-            <select
-              value={draft.installation}
-              onChange={(e) => setDraft((d) => ({ ...d, installation: e.target.value }))}
-              className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
-            >
-              {INSTALLATIONS.map((inst) => (
-                <option key={inst} value={inst}>{inst}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* DOD ID + UIC row */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">DOD ID</label>
-              <input type="text" value={draft.dod_id} onChange={(e) => setDraft((d) => ({ ...d, dod_id: e.target.value }))} placeholder="Optional" className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Installation</label>
+              <select value={draft.installation} onChange={e => setDraft(d => ({ ...d, installation: e.target.value }))}
+                className={fieldCls}>
+                {INSTALLATIONS.map(inst => <option key={inst} value={inst}>{inst}</option>)}
+              </select>
             </div>
-            <div className="flex-1">
-              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">UIC</label>
-              <input type="text" value={draft.uic} onChange={(e) => setDraft((d) => ({ ...d, uic: e.target.value }))} placeholder="Optional" className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all" />
+            <div>
+              <label className={labelCls}>UIC</label>
+              <input type="text" value={draft.uic} placeholder="Optional"
+                onChange={e => setDraft(d => ({ ...d, uic: e.target.value }))} className={fieldCls} />
             </div>
           </div>
 
-          {/* Supervisor */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Supervisor Name</label>
-              <input type="text" value={draft.supervisor_name} onChange={(e) => setDraft((d) => ({ ...d, supervisor_name: e.target.value }))} placeholder="Optional" className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all" />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Supervisor Name</label>
+              <input type="text" value={draft.supervisor_name} placeholder="Optional"
+                onChange={e => setDraft(d => ({ ...d, supervisor_name: e.target.value }))} className={fieldCls} />
             </div>
-            <div className="flex-1">
-              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Supervisor Title</label>
-              <input type="text" value={draft.supervisor_title} onChange={(e) => setDraft((d) => ({ ...d, supervisor_title: e.target.value }))} placeholder="Optional" className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all" />
+            <div>
+              <label className={labelCls}>Supervisor Title</label>
+              <input type="text" value={draft.supervisor_title} placeholder="Optional"
+                onChange={e => setDraft(d => ({ ...d, supervisor_title: e.target.value }))} className={fieldCls} />
             </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-700">
-          <button onClick={onClose} className="px-4 py-2 rounded-md text-xs font-medium text-zinc-400 hover:text-zinc-200 hover:bg-slate-700 transition-all">
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving || !draft.name_last_first.trim()}
-            className="px-4 py-2 rounded-md bg-navy-700 border border-navy-600/50 text-navy-200 text-xs font-medium hover:bg-navy-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-          >
-            {saving ? "Saving..." : "Save Profile"}
-          </button>
+        <div className="flex items-center justify-between px-5 py-3 border-t border-slate-700 bg-slate-900/50">
+          <p className="text-[9px] font-mono text-slate-600">SAVED TO profile.json</p>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-1.5 text-xs font-mono text-slate-400 hover:text-zinc-200 hover:bg-slate-700 rounded-sm transition-all">CANCEL</button>
+            <button onClick={handleSave} disabled={saving || !draft.name_last_first.trim()}
+              className="px-4 py-1.5 text-xs font-mono bg-navy-700 text-navy-200 border border-navy-600 hover:bg-navy-600 disabled:opacity-40 disabled:cursor-not-allowed rounded-sm transition-all">
+              {saving ? "SAVING..." : "SAVE RECORD"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* ── Sidebar Health Dot ──────────────────────────────────────────── */
+/* ── Health dot ──────────────────────────────────────────────────── */
 function HealthDot({ on }: { on: boolean | null }) {
-  if (on === null) return <span className="w-2 h-2 rounded-full bg-zinc-600" />;
-  return <span className={`w-2 h-2 rounded-full ${on ? "bg-green-400" : "bg-red-400"}`} />;
+  if (on === null) return <span className="w-1.5 h-1.5 rounded-full bg-slate-700 inline-block" />;
+  return <span className={`w-1.5 h-1.5 rounded-full inline-block ${on ? "bg-green-400" : "bg-red-400"}`} />;
 }
 
 /* ── Main App ────────────────────────────────────────────────────── */
 export default function App() {
-  const [activeTab, setActiveTab]         = useState<Tab>("travel");
-  const [status, setStatus]               = useState<Status>("idle");
-  const [messages, setMessages]           = useState<Message[]>([]);
-  const [input, setInput]                 = useState("");
-  const [isStreaming, setIsStreaming]     = useState(false);
+  const [activeTab, setActiveTab]               = useState<Tab>("travel");
+  const [status, setStatus]                     = useState<Status>("idle");
+  const [messages, setMessages]                 = useState<Message[]>([]);
+  const [input, setInput]                       = useState("");
+  const [isStreaming, setIsStreaming]           = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
-  const [profile, setProfile]             = useState<SoldierProfile>(DEFAULT_PROFILE);
-  const [health, setHealth]               = useState<HealthStatus | null>(null);
+  const [profile, setProfile]                   = useState<SoldierProfile>(DEFAULT_PROFILE);
+  const [health, setHealth]                     = useState<HealthStatus | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  // GET /api/health on mount + every 30s
   const fetchHealth = useCallback(async () => {
     try {
       const res = await fetch("/api/health");
       if (res.ok) setHealth(await res.json());
       else setHealth(null);
-    } catch {
-      setHealth(null);
-    }
+    } catch { setHealth(null); }
   }, []);
 
   useEffect(() => {
@@ -456,7 +373,6 @@ export default function App() {
     return () => clearInterval(id);
   }, [fetchHealth]);
 
-  // GET /api/profile on mount
   useEffect(() => {
     (async () => {
       try {
@@ -465,9 +381,7 @@ export default function App() {
           const data: SoldierProfile = await res.json();
           if (data.name_last_first) setProfile(data);
         }
-      } catch {
-        // Keep default profile if backend unavailable
-      }
+      } catch { /* keep default */ }
     })();
   }, []);
 
@@ -476,222 +390,222 @@ export default function App() {
     const text = input.trim();
     if (!text || isStreaming) return;
 
-    const userMsg: Message = { role: "user", content: text, timestamp: new Date() };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages(prev => [...prev, { role: "user", content: text, timestamp: new Date() }]);
     setInput("");
     setStatus("thinking");
     setIsStreaming(true);
 
     try {
-      // POST /api/chat — spec shape: {message, tab}
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, tab: activeTab }),
       });
-
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
       const data = await res.json();
 
-      // Check application-level error per spec: {response: null, error: "..."}
       if (data.error) {
         setStatus("error");
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `Error: ${data.error}`, timestamp: new Date() },
-        ]);
+        setMessages(prev => [...prev, { role: "assistant", content: `Error: ${data.error}`, timestamp: new Date() }]);
         return;
       }
 
       setStatus("done");
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: data.response || "No response received.",
-          timestamp: new Date(),
-          tool_calls: data.tool_calls || [],
-          form_output: data.form_output ?? null,
-        },
-      ]);
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: data.response || "No response received.",
+        timestamp: new Date(),
+        tool_calls: data.tool_calls || [],
+        form_output: data.form_output ?? null,
+      }]);
     } catch {
       setStatus("error");
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: "Connection error. Make sure the backend is running on port 8000.", timestamp: new Date() },
-      ]);
+      setMessages(prev => [...prev, { role: "assistant", content: "Connection error. Verify backend is running on port 8000.", timestamp: new Date() }]);
     } finally {
       setIsStreaming(false);
-      setTimeout(() => setStatus("idle"), 3000);
+      setTimeout(() => setStatus(s => (s === "thinking" || s === "done" || s === "error") ? "idle" : s), 3000);
     }
   }
 
-  function handleExampleClick(query: string) {
-    setInput(query);
-    inputRef.current?.focus();
+  async function handleClearHistory() {
+    setMessages([]);
+    try { await fetch("/api/chat/history", { method: "DELETE" }); } catch { /* non-fatal */ }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
+  function handleExampleClick(prompt: string) { setInput(prompt); inputRef.current?.focus(); }
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(e); }
   }
 
-  // Derived sidebar health values
+  // Auto-resize textarea as user types
+  function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setInput(e.target.value);
+    const el = e.target;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  }
+
   const ollamaOk    = health?.ollama ?? null;
   const vectorOk    = health ? health.vector_store_chunks > 0 : null;
   const gsaOk       = health?.gsa_cache_loaded ?? null;
-  const offlineMode = health ? !health.ollama : null;
+  const offlineMode = health?.offline_ready ?? null;
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900">
+    <div className="h-screen flex flex-col overflow-hidden" style={{ fontFamily: "'IBM Plex Sans', system-ui, sans-serif", background: "#0a0c0f", position: "relative" }}>
+      <AnimatedBackground />
       {showProfileModal && (
-        <ProfileModal
-          profile={profile}
-          onSave={setProfile}
-          onClose={() => setShowProfileModal(false)}
-        />
+        <ProfileModal profile={profile} onSave={setProfile} onClose={() => setShowProfileModal(false)} />
       )}
 
-      {/* Top Bar */}
-      <header className="flex items-center justify-between px-5 py-3 bg-slate-800 border-b border-slate-700">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-navy-700/40 flex items-center justify-center">
-            <span className="text-crimson-300 font-bold text-sm">DL</span>
+      {/* ── Top Nav Bar ── */}
+      <header className="flex items-center justify-between px-5 py-0 border-b border-slate-700 h-12 flex-shrink-0" style={{ position: "relative", zIndex: 10, background: "rgba(10,12,15,0.88)", backdropFilter: "blur(8px)" }}>
+        {/* Left: Logo */}
+        <div className="flex items-center gap-5">
+          <div className="flex flex-col leading-none select-none py-2">
+            <span className="text-[13px] font-black text-navy-300 tracking-[0.14em]"
+              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>DUTY</span>
+            <div className="flex flex-col gap-[1.5px] my-[2px]">
+              <div className="h-[1px] w-full" style={{ background: "linear-gradient(90deg, #243660 60%, #5c1020 100%)" }} />
+              <div className="h-[1px] w-3/4 self-center bg-crimson-500" />
+              <div className="h-[1px] w-full" style={{ background: "linear-gradient(90deg, #243660 60%, #5c1020 100%)" }} />
+            </div>
+            <span className="text-[13px] font-black text-crimson-400 tracking-[0.14em]"
+              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>LINE</span>
           </div>
-          <div>
-            <h1 className="text-sm font-semibold text-zinc-100 tracking-wide">DUTY LINE</h1>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-widest">GenAI.mil</p>
-          </div>
+
+          <div className="h-6 w-px bg-slate-700" />
+
+          {/* Tab navigation in top bar — GenAI.mil style */}
+          <nav className="flex items-center h-12">
+            {(Object.entries(TAB_CONFIG) as [Tab, typeof TAB_CONFIG[Tab]][]).map(([key, cfg]) => (
+              <button key={key} onClick={() => setActiveTab(key)}
+                className={`h-full px-4 text-[11px] font-mono tracking-wide border-b-2 transition-all flex items-center gap-1.5 ${
+                  activeTab === key
+                    ? "border-crimson-500 text-zinc-200 bg-slate-900/40"
+                    : "border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/60"
+                }`}>
+                <span className="text-xs">{cfg.icon}</span>
+                {cfg.label.toUpperCase()}
+              </button>
+            ))}
+          </nav>
         </div>
-        <div className="flex items-center gap-4">
-          <StatusChip status={status} />
-          <div className="h-4 w-px bg-slate-700" />
-          <button
-            onClick={() => setShowProfileModal(true)}
-            className="text-right group cursor-pointer"
-            title="Edit soldier profile"
-          >
-            <p className="text-xs text-zinc-300 font-medium group-hover:text-navy-200 transition-colors">
-              {profile.rank} {profile.name_last_first}
-              <span className="ml-1.5 text-[10px] text-zinc-600 group-hover:text-crimson-300/60 transition-colors">&#x270E;</span>
-            </p>
-            <p className="text-[10px] text-zinc-500">{profile.unit} | {profile.installation}</p>
+
+        {/* Right: Status + Profile */}
+        <div className="flex items-center gap-5">
+          <StatusBadge status={status} />
+          <div className="h-5 w-px bg-slate-700" />
+          <button onClick={() => setShowProfileModal(true)}
+            className="flex items-center gap-2.5 group cursor-pointer py-2">
+            <div className="w-7 h-7 rounded bg-navy-800 border border-navy-700 flex items-center justify-center">
+              <span className="text-[9px] font-mono font-bold text-navy-300">
+                {profile.name_last_first.split(",")[0]?.slice(0, 2).toUpperCase() || "SP"}
+              </span>
+            </div>
+            <div className="text-right">
+              <p className="text-[12px] text-zinc-200 group-hover:text-navy-200 transition-colors font-medium">
+                {profile.rank} {profile.name_last_first}
+              </p>
+              <p className="text-[10px] text-slate-400">{profile.installation} · {profile.grade}</p>
+            </div>
+            <span className="text-[10px] text-slate-600 group-hover:text-navy-300 transition-colors ml-1">▾</span>
           </button>
         </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-56 bg-slate-800/50 border-r border-slate-700 flex flex-col">
-          <div className="p-3">
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-2 px-2">Modules</p>
-            <nav className="space-y-1">
+        {/* ── Left Sidebar ── */}
+        <aside className="w-52 border-r border-slate-700 flex flex-col flex-shrink-0 relative scanline" style={{ position: "relative", zIndex: 10, background: "rgba(10,12,15,0.75)", backdropFilter: "blur(8px)" }}>
+          <div className="p-3 relative z-10">
+            <p className="text-[10px] font-mono tracking-widest text-slate-500 uppercase mb-3 px-1">Modules</p>
+            <nav className="space-y-0.5">
               {(Object.entries(TAB_CONFIG) as [Tab, typeof TAB_CONFIG[Tab]][]).map(([key, cfg]) => (
-                <button
-                  key={key}
-                  onClick={() => setActiveTab(key)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-left transition-all ${
+                <button key={key} onClick={() => setActiveTab(key)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-sm text-left transition-all ${
                     activeTab === key
-                      ? "bg-navy-700/60 text-navy-200 border border-navy-600/50"
-                      : "text-zinc-400 hover:bg-navy-800/40 hover:text-zinc-200"
-                  }`}
-                >
-                  <span className="text-base">{cfg.icon}</span>
+                      ? "bg-navy-800/80 text-navy-200 border-l-2 border-crimson-500 pl-2.5"
+                      : "text-slate-500 hover:bg-slate-700/50 hover:text-slate-300 border-l-2 border-transparent"
+                  }`}>
+                  <span className="text-xs flex-shrink-0">{cfg.icon}</span>
                   <div>
-                    <p className="text-xs font-medium">{cfg.label}</p>
-                    <p className="text-[10px] text-zinc-500">{cfg.description}</p>
+                    <p className="text-[12px] font-medium">{cfg.label}</p>
+                    <p className="text-[10px] text-slate-500">{cfg.description}</p>
                   </div>
                 </button>
               ))}
             </nav>
           </div>
 
-          {/* Health status — wired to GET /api/health */}
-          <div className="mt-auto p-3 border-t border-slate-700">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 px-2">
-                <HealthDot on={ollamaOk} />
-                <span className="text-[10px] text-zinc-400">
-                  Ollama {health?.model ? `(${health.model})` : ""}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 px-2">
-                <HealthDot on={vectorOk} />
-                <span className="text-[10px] text-zinc-400">
-                  Vector Store {health ? `(${health.vector_store_chunks} chunks)` : ""}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 px-2">
-                <HealthDot on={gsaOk} />
-                <span className="text-[10px] text-zinc-400">GSA Rates Cached</span>
-              </div>
-              <div className="flex items-center gap-2 px-2">
-                <HealthDot on={offlineMode} />
-                <span className="text-[10px] text-zinc-400">Offline Mode</span>
-              </div>
+          {/* System status */}
+          <div className="mt-auto border-t border-slate-700 p-3 relative z-10">
+            <p className="text-[10px] font-mono tracking-widest text-slate-500 uppercase mb-2 px-1">System</p>
+            <div className="space-y-1.5 px-1">
+              {[
+                { dot: ollamaOk,    label: `Ollama${health?.model ? ` · ${health.model}` : ""}` },
+                { dot: vectorOk,    label: `Vector${health ? ` · ${health.vector_store_chunks}` : ""}` },
+                { dot: gsaOk,       label: "GSA Cache" },
+                { dot: offlineMode, label: "Offline Ready" },
+              ].map(({ dot, label }) => (
+                <div key={label} className="flex items-center gap-2">
+                  <HealthDot on={dot} />
+                  <span className="text-[10px] text-slate-400 truncate">{label}</span>
+                </div>
+              ))}
             </div>
           </div>
         </aside>
 
-        {/* Main Content */}
-        <main className="flex-1 flex flex-col">
-          {/* Tab Bar */}
-          <div className="flex items-center gap-1 px-4 py-2 bg-slate-800/30 border-b border-slate-700/50">
-            {(Object.entries(TAB_CONFIG) as [Tab, typeof TAB_CONFIG[Tab]][]).map(([key, cfg]) => (
-              <button
-                key={key}
-                onClick={() => setActiveTab(key)}
-                className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
-                  activeTab === key
-                    ? "bg-navy-700 text-navy-200"
-                    : "text-zinc-500 hover:text-zinc-300 hover:bg-slate-700/30"
-                }`}
-              >
-                {cfg.icon} {cfg.label}
-              </button>
-            ))}
-          </div>
-
+        {/* ── Main chat area ── */}
+        <main className="flex-1 flex flex-col overflow-hidden" style={{ position: "relative", zIndex: 10, background: "transparent" }}>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="flex-1 overflow-y-auto px-8 py-6">
             {messages.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center">
-                <div className="w-16 h-16 rounded-xl bg-navy-800/50 border border-navy-700/50 flex items-center justify-center mb-4">
-                  <span className="text-3xl text-crimson-300/80">{TAB_CONFIG[activeTab].icon}</span>
+              /* Empty state */
+              <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto">
+                <div className="w-12 h-12 rounded border border-navy-700 flex items-center justify-center mb-5" style={{ background: "rgba(10,16,48,0.6)" }}>
+                  <span className="text-2xl">{TAB_CONFIG[activeTab].icon}</span>
                 </div>
-                <h2 className="text-lg font-semibold text-zinc-200 mb-1">{TAB_CONFIG[activeTab].label}</h2>
-                <p className="text-sm text-zinc-500 mb-6">{TAB_CONFIG[activeTab].description}</p>
-                <div className="w-full max-w-lg space-y-2">
-                  <p className="text-[10px] uppercase tracking-widest text-zinc-600 font-semibold mb-2">Demo prompts</p>
+                <h2 className="text-lg font-semibold text-zinc-200 tracking-wide mb-1">
+                  {TAB_CONFIG[activeTab].label.toUpperCase()}
+                </h2>
+                <p className="text-sm text-slate-400 mb-8">
+                  {TAB_CONFIG[activeTab].description.toUpperCase()}
+                </p>
+
+                <div className="w-full space-y-2">
+                  <p className="text-[10px] font-mono tracking-widest text-slate-500 uppercase mb-3">
+                    — SUGGESTED QUERIES —
+                  </p>
                   {EXAMPLE_QUERIES[activeTab].map(({ label, prompt }) => (
-                    <button
-                      key={prompt}
-                      onClick={() => handleExampleClick(prompt)}
-                      className="w-full text-left px-4 py-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:border-navy-600/50 hover:bg-slate-800 transition-all group"
-                    >
-                      <span className="inline-block text-[9px] uppercase tracking-widest font-semibold px-1.5 py-0.5 rounded bg-crimson-700/20 text-crimson-300 border border-crimson-700/30 mb-1.5">
-                        {label}
-                      </span>
-                      <p className="text-sm text-zinc-400 group-hover:text-zinc-200 transition-colors leading-relaxed">{prompt}</p>
+                    <button key={prompt} onClick={() => handleExampleClick(prompt)}
+                      className="w-full text-left px-4 py-3 border border-slate-700 hover:border-navy-600 transition-all group rounded-sm" style={{ background: "rgba(15,19,24,0.8)", backdropFilter: "blur(4px)" }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[10px] font-mono tracking-widest px-2 py-0.5 border rounded-sm font-semibold" style={{ background:"rgba(124,24,48,0.2)", color:"#e05070", borderColor:"rgba(124,24,48,0.4)" }}>
+                          {label.toUpperCase()}
+                        </span>
+                      </div>
+                      <p className="text-[13px] text-slate-300 group-hover:text-zinc-100 transition-colors leading-relaxed">
+                        {prompt}
+                      </p>
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="space-y-4 max-w-3xl mx-auto">
-                {messages.map((msg, i) => (
-                  <MessageBubble key={i} msg={msg} />
-                ))}
+              <div className="space-y-5 max-w-3xl mx-auto">
+                {messages.map((msg, i) => <MessageBubble key={i} msg={msg} />)}
                 {isStreaming && (
-                  <div className="flex justify-start animate-fade-in">
-                    <div className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 rounded-bl-sm">
-                      <div className="flex gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-crimson-400 animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="w-2 h-2 rounded-full bg-crimson-400 animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="w-2 h-2 rounded-full bg-crimson-400 animate-bounce" style={{ animationDelay: "300ms" }} />
+                  <div className="flex items-start gap-2.5 animate-fade-in">
+                    <div className="w-7 h-7 rounded bg-navy-700 border border-navy-600 flex items-center justify-center flex-shrink-0">
+                      <span className="text-[9px] font-mono font-bold text-navy-200">DL</span>
+                    </div>
+                    <div className="bg-slate-800 border border-slate-700 rounded px-4 py-3 rounded-bl-none">
+                      <div className="flex gap-1.5 items-center">
+                        {[0, 200, 400].map(d => (
+                          <span key={d} className="w-1.5 h-1.5 rounded-full bg-navy-400 animate-bounce"
+                            style={{ animationDelay: `${d}ms` }} />
+                        ))}
+                        <span className="text-[9px] font-mono text-slate-600 ml-2">PROCESSING</span>
                       </div>
                     </div>
                   </div>
@@ -701,33 +615,109 @@ export default function App() {
             )}
           </div>
 
-          {/* Input */}
-          <div className="px-6 py-3 bg-slate-800/30 border-t border-slate-700/50">
-            <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-              <div className="flex gap-2 items-end">
-                <div className="flex-1">
-                  <textarea
-                    ref={inputRef}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={`Ask about ${TAB_CONFIG[activeTab].label.toLowerCase()}...`}
-                    rows={1}
-                    className="w-full resize-none rounded-lg bg-slate-800 border border-slate-700 px-4 py-2.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isStreaming}
-                  className="px-4 py-2.5 rounded-lg bg-navy-700 text-navy-200 font-medium text-sm hover:bg-navy-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all border border-navy-600/50"
-                >
-                  Send
-                </button>
+          {/* ── Input bar ── */}
+          <div className="border-t border-slate-700 px-6 pt-3 pb-4"
+            style={{ background: "rgba(10,12,15,0.92)", backdropFilter: "blur(12px)" }}>
+            <div className="max-w-3xl mx-auto">
+              {/* Active module indicator */}
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-[8px] font-mono tracking-widest text-slate-600 uppercase">
+                  {TAB_CONFIG[activeTab].icon} {TAB_CONFIG[activeTab].label.toUpperCase()} MODULE
+                </span>
+                <div className="flex-1 h-px bg-slate-800" />
+                {input.length > 0 && (
+                  <span className="text-[8px] font-mono text-slate-600">
+                    {input.length} / 2000
+                  </span>
+                )}
+                {messages.length > 0 && (
+                  <button type="button" onClick={handleClearHistory}
+                    className="text-[8px] font-mono text-slate-600 hover:text-crimson-300 transition-colors px-2 py-0.5 hover:bg-crimson-900/20 rounded-sm">
+                    CLR SESSION
+                  </button>
+                )}
               </div>
-              <p className="text-[10px] text-zinc-600 mt-1.5 text-center">
-                Shift+Enter for new line. All data stays local. Not legal advice.
+
+              {/* Main input container */}
+              <div
+                className="rounded border transition-all duration-200"
+                style={{
+                  background: "rgba(15,19,24,0.95)",
+                  border: input.length > 0 ? "1px solid rgba(74,111,168,0.6)" : "1px solid rgba(26,33,48,0.8)",
+                  boxShadow: input.length > 0 ? "0 0 0 3px rgba(36,54,96,0.15), inset 0 1px 0 rgba(255,255,255,0.02)" : "none",
+                }}>
+                {/* Textarea */}
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
+                  placeholder={`Ask about ${TAB_CONFIG[activeTab].label.toLowerCase()}...`}
+                  rows={2}
+                  style={{
+                    minHeight: "52px",
+                    maxHeight: "160px",
+                    height: "auto",
+                    resize: "none",
+                    width: "100%",
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    padding: "12px 14px 8px",
+                    fontSize: "14px",
+                    fontFamily: "'IBM Plex Sans', system-ui, sans-serif",
+                    color: "#d1d5db",
+                    lineHeight: "1.6",
+                    caretColor: "#4a6fa8",
+                  }}
+                  className="placeholder-slate-600"
+                />
+
+                {/* Bottom toolbar */}
+                <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+                  <div className="flex items-center gap-3">
+                    <span className="text-[9px] font-mono text-slate-700">
+                      SHIFT+ENTER for newline
+                    </span>
+                    {isStreaming && (
+                      <span className="flex items-center gap-1.5 text-[9px] font-mono text-navy-400 animate-pulse-amber">
+                        <span className="w-1.5 h-1.5 rounded-full bg-navy-400" />
+                        PROCESSING
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {input.trim() && (
+                      <button type="button" onClick={() => { setInput(""); if (inputRef.current) { inputRef.current.style.height = "auto"; } }}
+                        className="text-[9px] font-mono text-slate-600 hover:text-zinc-400 transition-colors px-1.5">
+                        ✕
+                      </button>
+                    )}
+                    <button
+                      onClick={handleSubmit}
+                      disabled={!input.trim() || isStreaming}
+                      className="flex items-center gap-2 px-4 py-1.5 text-[11px] font-mono tracking-wider transition-all rounded-sm disabled:opacity-30 disabled:cursor-not-allowed"
+                      style={{
+                        background: input.trim() && !isStreaming ? "rgba(26,40,72,0.9)" : "rgba(15,19,24,0.6)",
+                        border: input.trim() && !isStreaming ? "1px solid rgba(74,111,168,0.5)" : "1px solid rgba(26,33,48,0.6)",
+                        borderBottom: input.trim() && !isStreaming ? "2px solid rgba(124,24,48,0.8)" : "2px solid rgba(26,33,48,0.4)",
+                        color: input.trim() && !isStreaming ? "#93b5d8" : "#4b5563",
+                      }}
+                    >
+                      SEND
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[8px] font-mono text-slate-800 mt-2 text-center">
+                ALL DATA STAYS LOCAL · NOT LEGAL ADVICE
               </p>
-            </form>
+            </div>
           </div>
         </main>
       </div>
