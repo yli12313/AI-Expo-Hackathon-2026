@@ -64,6 +64,44 @@ KNOWN_DISTANCES: dict[tuple[str, str], int] = {
     ("fort stewart",  "fort moore"):    120,
     ("fort belvoir",  "fort liberty"):  390,
     ("pentagon",      "fort liberty"):  390,
+    # Alaska
+    ("jber",            "fort wainwright"):  360,
+    ("fort wainwright", "jber"):              360,
+    # Texas
+    ("fort cavazos",    "fort sam houston"):  160,
+    ("fort sam houston","fort cavazos"):       160,
+    ("fort bliss",      "fort sam houston"):  450,
+    ("fort sam houston","fort bliss"):         450,
+    # East Coast
+    ("fort meade",      "fort liberty"):      420,
+    ("fort liberty",    "fort meade"):        420,
+    ("fort belvoir",    "fort meade"):         35,
+    ("fort meade",      "fort belvoir"):        35,
+    ("west point",      "fort liberty"):      590,
+    ("fort liberty",    "west point"):        590,
+    # Southeast
+    ("fort stewart",    "fort liberty"):      620,
+    ("fort liberty",    "fort stewart"):      620,
+    ("fort jackson",    "fort liberty"):      420,
+    ("fort liberty",    "fort jackson"):      420,
+    ("fort benning",    "fort stewart"):      120,  # fort benning = fort moore (old name)
+    # Midwest / Central
+    ("fort leonard wood","fort riley"):       310,
+    ("fort riley",      "fort leonard wood"): 310,
+    ("fort leavenworth","fort riley"):         70,
+    ("fort riley",      "fort leavenworth"):   70,
+    # West Coast
+    ("fort irwin",      "camp pendleton"):    180,
+    ("camp pendleton",  "fort irwin"):        180,
+    ("jblm",            "fort lewis"):          0,  # same installation
+    ("fort lewis",      "jblm"):               0,
+    # Hawaii
+    ("schofield barracks","tripler army medical center"): 15,
+    # Pentagon / DC area
+    ("pentagon",         "fort meade"):        30,
+    ("fort meade",       "pentagon"):          30,
+    ("pentagon",         "fort belvoir"):      15,
+    ("fort belvoir",     "pentagon"):          15,
 }
 
 # ---------------------------------------------------------------------------
@@ -364,164 +402,440 @@ def calculate_travel_cost(
 # Tool 4 — fill_form
 # ---------------------------------------------------------------------------
 
-# Field mappings: form_name → {our_field: pdf_field_name}
-# PDF field names vary — these cover the most common DA/DD form versions
-FORM_FIELDS: dict[str, dict[str, str]] = {
+# ---------------------------------------------------------------------------
+# Form field structures
+# ---------------------------------------------------------------------------
+
+# AcroForm field map: our semantic keys → actual PDF AcroForm field names.
+# Only forms with real AcroForm fields are listed here.
+PDF_FIELD_MAP: dict[str, dict[str, str]] = {
     "DD_1610": {
-        "from_name":        "FROM",
-        "rank":             "GRADE",
-        "unit":             "ORGANIZATION",
-        "purpose":          "PURPOSE OF TRAVEL",
-        "departure_date":   "PROCEED DATE",
-        "return_date":      "RETURN DATE",
-        "destination":      "TO",
-        "travel_mode":      "MODE OF TRANSPORTATION",
-        "cost_estimate":    "ESTIMATED COST",
-        "authorization_no": "ORDER NUMBER",
-    },
-    "DA_31": {
-        "name_last_first":  "NAME (Last, First, MI)",
-        "rank":             "RANK",
-        "ssn_last4":        "SSN (LAST 4)",
-        "unit":             "ORGANIZATION",
-        "leave_type":       "TYPE OF LEAVE",
-        "departure_date":   "DATE DEPARTURE",
-        "return_date":      "DATE RETURN",
-        "num_days":         "NUMBER OF DAYS",
-        "leave_address":    "ADDRESS DURING LEAVE",
-        "phone":            "PHONE",
-    },
-    "DA_4856": {
-        "name_last_first":  "NAME OF SOLDIER",
-        "rank":             "RANK",
-        "ssn_last4":        "SSN",
-        "unit":             "ORGANIZATION",
-        "date":             "DATE",
-        "counseling_type":  "PURPOSE OF COUNSELING",
-        "key_points":       "KEY POINTS OF DISCUSSION",
-        "action_plan":      "PLAN OF ACTION",
-        "leader_name":      "COUNSELOR NAME",
-        "leader_rank":      "COUNSELOR RANK",
-    },
-    "DA_4187": {
-        "name_last_first":  "NAME",
-        "rank":             "GRADE",
-        "ssn_last4":        "SSN",
-        "unit":             "ORGANIZATION",
-        "action_requested": "TYPE OF REQUESTED PERSONNEL ACTION",
-        "effective_date":   "EFFECTIVE DATE",
-        "reason":           "REASON FOR REQUESTED PERSONNEL ACTION",
-    },
+        "name_last_first": "name",
+        "ssn_last4":       "ssn",
+        "unit":            "org_elem",
+        "installation":    "pds",
+        "departure_date":  "proc_date",
+        "destination":     "itin",
+        "purpose":         "tdy_purp",
+        "travel_days":     "tdy_days",
+        "cost_estimate":   "d_TOTAL",
+        "per_diem_est":    "a_PER_DIEM",
+        "remarks":         "remarks",
+        "pos_title":       "pos_title",
+        "auth_no":         "auth_no",
+        "iss_date":        "iss_date",
+    }
 }
 
+# Display field map: our semantic keys → human-readable labels for reportlab PDF.
+# Also defines which fields appear (and in what order) for each form.
+FORM_DISPLAY_FIELDS: dict[str, list] = {
+    "DD_1610": [
+        ("name_last_first", "Traveler Name"),
+        ("rank",            "Grade/Rank"),
+        ("unit",            "Organization"),
+        ("installation",    "Permanent Duty Station"),
+        ("departure_date",  "Proceed Date"),
+        ("return_date",     "Return Date"),
+        ("destination",     "Destination/Itinerary"),
+        ("purpose",         "Purpose of Travel"),
+        ("travel_days",     "TDY Days"),
+        ("travel_mode",     "Mode of Transportation"),
+        ("cost_estimate",   "Total Estimated Cost"),
+        ("per_diem_est",    "Per Diem Estimate"),
+        ("remarks",         "Remarks"),
+        ("auth_no",         "Order/Authorization Number"),
+    ],
+    "DA_31": [
+        ("name_last_first", "Name (Last, First, MI)"),
+        ("rank",            "Rank"),
+        ("grade",           "Grade"),
+        ("ssn_last4",       "SSN (Last 4)"),
+        ("dod_id",          "DoD ID"),
+        ("unit",            "Organization/Unit"),
+        ("installation",    "Installation"),
+        ("leave_type",      "Type of Leave"),
+        ("departure_date",  "Date Leave Begins"),
+        ("return_date",     "Date Leave Ends"),
+        ("num_days",        "Number of Days"),
+        ("leave_address",   "Address During Leave"),
+        ("phone",           "Contact Phone"),
+        ("supervisor_name", "Approving Official"),
+    ],
+    "DA_4856": [
+        ("name_last_first",  "Name of Soldier"),
+        ("rank",             "Rank"),
+        ("ssn_last4",        "SSN (Last 4)"),
+        ("unit",             "Organization"),
+        ("date",             "Date"),
+        ("counseling_type",  "Purpose of Counseling"),
+        ("key_points",       "Key Points of Discussion"),
+        ("action_plan",      "Plan of Action"),
+        ("leader_name",      "Counselor Name"),
+        ("leader_rank",      "Counselor Rank/Title"),
+        ("supervisor_title", "Counselor Position"),
+    ],
+    "DA_4187": [
+        ("name_last_first",  "Name"),
+        ("rank",             "Grade"),
+        ("ssn_last4",        "SSN (Last 4)"),
+        ("unit",             "Organization"),
+        ("action_requested", "Type of Requested Personnel Action"),
+        ("effective_date",   "Effective Date"),
+        ("reason",           "Reason for Requested Action"),
+    ],
+}
+
+# Human-readable full form titles used in the PDF header
+_FORM_TITLES: dict[str, str] = {
+    "DD_1610": "DD FORM 1610 — Request and Authorization for TDY Travel of Service Member",
+    "DA_31":   "DA FORM 31 — Request and Authority for Leave",
+    "DA_4856": "DA FORM 4856 — Developmental Counseling Form",
+    "DA_4187": "DA FORM 4187 — Personnel Action",
+}
+
+# Backward-compatible alias so any existing callers of FORM_FIELDS still work
+FORM_FIELDS: dict[str, dict[str, str]] = {
+    name: {our: label for our, label in fields}
+    for name, fields in FORM_DISPLAY_FIELDS.items()
+}
+
+
+# ---------------------------------------------------------------------------
+# Helper — reportlab PDF generator
+# ---------------------------------------------------------------------------
+
+def _generate_reportlab_pdf(
+    form_name: str,
+    display_rows: list,
+    missing_fields: list,
+    output_path: Path,
+) -> bool:
+    """
+    Generate a military-styled letter-size PDF for any DA/DD form.
+
+    Args:
+        form_name:      Form key, e.g. "DA_31"
+        display_rows:   List of (label, value) tuples for filled fields
+        missing_fields: List of display labels that had no value
+        output_path:    Destination file path (Path object)
+
+    Returns True on success, False on any exception.
+    """
+    try:
+        from reportlab.lib.pagesizes import LETTER
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+        )
+        from reportlab.lib.enums import TA_CENTER
+
+        # Brand colors
+        OLIVE    = colors.HexColor("#445233")
+        WHITE    = colors.white
+        AMBER    = colors.HexColor("#b5881a")
+        ROW_A    = colors.HexColor("#f5f5f0")
+        ROW_B    = colors.white
+        GRAY_TXT = colors.HexColor("#555555")
+
+        title_text    = _FORM_TITLES.get(form_name, f"{form_name} — Military Form")
+        subtitle_text = (
+            f"Generated by Duty Line \u00b7 "
+            f"{datetime.now().strftime('%d %b %Y %H:%M')} \u00b7 "
+            "Review with your S1 before submission"
+        )
+
+        doc = SimpleDocTemplate(
+            str(output_path),
+            pagesize=LETTER,
+            leftMargin=0.75 * inch,
+            rightMargin=0.75 * inch,
+            topMargin=0.5 * inch,
+            bottomMargin=0.75 * inch,
+        )
+
+        styles = getSampleStyleSheet()
+
+        style_title = ParagraphStyle(
+            "FormTitle",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=13,
+            textColor=WHITE,
+            alignment=TA_CENTER,
+            spaceAfter=2,
+        )
+        style_subtitle = ParagraphStyle(
+            "FormSubtitle",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=8,
+            textColor=colors.HexColor("#ddddcc"),
+            alignment=TA_CENTER,
+        )
+        style_label = ParagraphStyle(
+            "FieldLabel",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            textColor=colors.HexColor("#222222"),
+            leading=12,
+        )
+        style_value = ParagraphStyle(
+            "FieldValue",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=9,
+            textColor=colors.HexColor("#111111"),
+            leading=12,
+        )
+        style_missing_hdr = ParagraphStyle(
+            "MissingHdr",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            textColor=AMBER,
+            spaceBefore=10,
+            spaceAfter=4,
+        )
+        style_missing_item = ParagraphStyle(
+            "MissingItem",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=9,
+            textColor=AMBER,
+            leftIndent=12,
+            leading=13,
+        )
+        style_footer = ParagraphStyle(
+            "Footer",
+            parent=styles["Normal"],
+            fontName="Helvetica-Oblique",
+            fontSize=7,
+            textColor=GRAY_TXT,
+            alignment=TA_CENTER,
+            spaceBefore=8,
+        )
+
+        usable_width = LETTER[0] - 1.5 * inch
+
+        story = []
+
+        # ---- Header banner ----
+        header_table = Table(
+            [[Paragraph(title_text, style_title)],
+             [Paragraph(subtitle_text, style_subtitle)]],
+            colWidths=[usable_width],
+        )
+        header_table.setStyle(TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, -1), OLIVE),
+            ("TOPPADDING",    (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 14),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 14),
+        ]))
+        story.append(header_table)
+        story.append(Spacer(1, 0.2 * inch))
+
+        # ---- Field / Value table ----
+        if display_rows:
+            col_label = usable_width * 0.38
+            col_value = usable_width * 0.62
+            table_data = [
+                [Paragraph("<b>Field</b>", style_label),
+                 Paragraph("<b>Value</b>", style_label)],
+            ]
+            for label, value in display_rows:
+                table_data.append([
+                    Paragraph(label, style_label),
+                    Paragraph(str(value), style_value),
+                ])
+
+            field_table = Table(table_data, colWidths=[col_label, col_value])
+            ts = TableStyle([
+                ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#d0d4c8")),
+                ("FONTNAME",      (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE",      (0, 0), (-1, 0), 9),
+                ("TOPPADDING",    (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+                ("GRID",          (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
+                ("VALIGN",        (0, 0), (-1, -1), "TOP"),
+            ])
+            # Alternating row backgrounds (skip header row at index 0)
+            for i in range(1, len(table_data)):
+                bg = ROW_A if (i - 1) % 2 == 0 else ROW_B
+                ts.add("BACKGROUND", (0, i), (-1, i), bg)
+            field_table.setStyle(ts)
+            story.append(field_table)
+
+        # ---- Missing fields section (amber) ----
+        if missing_fields:
+            story.append(Spacer(1, 0.15 * inch))
+            story.append(Paragraph(
+                "MISSING FIELDS — Required before submission",
+                style_missing_hdr,
+            ))
+            for label in missing_fields:
+                story.append(Paragraph(f"\u25a1  {label}", style_missing_item))
+
+        # ---- Footer disclaimer ----
+        story.append(Spacer(1, 0.15 * inch))
+        story.append(Paragraph(
+            "This document was auto-generated by Duty Line for reference purposes. "
+            "All information must be verified by the responsible S1/G1 before official submission. "
+            "Do not use as a legally binding document without proper review and signature.",
+            style_footer,
+        ))
+
+        doc.build(story)
+        return True
+
+    except Exception as rl_err:
+        logging.error(f"reportlab PDF generation failed: {rl_err}")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Tool 4 — fill_form
+# ---------------------------------------------------------------------------
 
 def fill_form(form_name: str, field_values: dict) -> dict:
     """
     Populate a military form with provided field values.
     Merges soldier profile for common fields (name, rank, unit, SSN-4).
 
-    Tries real PDF field filling first (pypdf).
-    Falls back to structured text summary if PDF unavailable or not fillable.
+    Always generates a reportlab PDF (reliable, works for all forms).
+    For DD_1610: also attempts to fill the real AcroForm fields via pypdf
+    and saves a second PDF with suffix _acroform.pdf if successful.
 
     Args:
         form_name:    One of: DD_1610, DA_31, DA_4856, DA_4187
         field_values: Dict of field names to values
 
-    Returns dict with file_path (if PDF generated), filled_fields, missing_fields, summary.
+    Returns dict with pdf_path (always set), filled_fields, missing_fields, summary.
     """
     try:
         form_name = form_name.upper().replace("-", "_").replace(" ", "_")
-        if form_name not in FORM_FIELDS:
+        if form_name not in FORM_DISPLAY_FIELDS:
             return {
                 "success": False,
-                "error":   f"Unknown form '{form_name}'. Supported: {list(FORM_FIELDS.keys())}",
+                "error":   (
+                    f"Unknown form '{form_name}'. "
+                    f"Supported: {list(FORM_DISPLAY_FIELDS.keys())}"
+                ),
             }
 
         # Merge soldier profile into field_values (profile provides defaults)
         profile = _get_profile()
-        merged = {**profile, **field_values}   # field_values overrides profile
+        merged  = {**profile, **field_values}   # field_values overrides profile
 
-        schema      = FORM_FIELDS[form_name]
-        filled      = {}
-        missing     = []
+        # Auto-populate date if not provided
+        if not merged.get("date"):
+            merged["date"] = datetime.now().strftime("%d %b %Y").upper()
 
-        for our_field, pdf_field in schema.items():
-            val = merged.get(our_field) or merged.get(pdf_field)
+        display_schema = FORM_DISPLAY_FIELDS[form_name]
+
+        # Build display_rows and track filled / missing
+        display_rows:   list = []
+        filled_dict:    dict = {}
+        missing_labels: list = []
+
+        for our_key, label in display_schema:
+            val = merged.get(our_key)
             if val:
-                filled[pdf_field] = str(val)
+                display_rows.append((label, str(val)))
+                filled_dict[label] = str(val)
             else:
-                missing.append(our_field)
+                missing_labels.append(label)
 
-        # Add generated date if not provided
-        if "date" in schema and "DATE" not in filled:
-            filled["DATE"] = datetime.now().strftime("%d %b %Y").upper()
+        # ---- Primary output: reportlab PDF (always generated) ----
+        ts          = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = OUTPUT_DIR / f"{form_name}_{ts}.pdf"
+        rl_ok       = _generate_reportlab_pdf(form_name, display_rows, missing_labels, output_path)
+        if not rl_ok:
+            output_path = None   # rare edge case
 
-        # Try PDF filling
-        pdf_path = FORMS_DIR / f"{form_name.lower()}.pdf"
-        output_path = OUTPUT_DIR / f"{form_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        pdf_filled  = False
+        # ---- Secondary output: AcroForm fill for DD_1610 via pypdf ----
+        acroform_path = None
+        if form_name in PDF_FIELD_MAP:
+            pdf_template = FORMS_DIR / f"{form_name.lower()}.pdf"
+            if pdf_template.exists():
+                acroform_map = PDF_FIELD_MAP[form_name]
+                acro_filled: dict = {}
+                for our_key, acro_field in acroform_map.items():
+                    val = merged.get(our_key)
+                    if val:
+                        acro_filled[acro_field] = str(val)
+                try:
+                    import pypdf
+                    reader = pypdf.PdfReader(str(pdf_template))
+                    writer = pypdf.PdfWriter()
+                    writer.append(reader)
+                    pdf_fields = reader.get_fields()
+                    if pdf_fields:
+                        for page in writer.pages:
+                            annotations = page.get("/Annots")
+                            if annotations:
+                                for annotation in annotations:
+                                    obj = annotation.get_object()
+                                    field_name = obj.get("/T")
+                                    if field_name and field_name in acro_filled:
+                                        obj.update({
+                                            pypdf.generic.NameObject("/V"):
+                                                pypdf.generic.create_string_object(
+                                                    acro_filled[field_name]
+                                                )
+                                        })
+                        acroform_path = OUTPUT_DIR / f"{form_name}_{ts}_acroform.pdf"
+                        with open(acroform_path, "wb") as f:
+                            writer.write(f)
+                except Exception as pdf_err:
+                    logging.warning(f"AcroForm fill failed for {form_name}: {pdf_err}")
+                    acroform_path = None
 
-        if pdf_path.exists():
-            try:
-                import pypdf
-                reader = pypdf.PdfReader(str(pdf_path))
-                writer = pypdf.PdfWriter()
-                writer.append(reader)
-                # Attempt to fill form fields
-                pdf_fields = reader.get_fields()
-                if pdf_fields:
-                    for page in writer.pages:
-                        annotations = page.get("/Annots")
-                        if annotations:
-                            for annotation in annotations:
-                                obj = annotation.get_object()
-                                field_name = obj.get("/T")
-                                if field_name and field_name in filled:
-                                    obj.update({
-                                        pypdf.generic.NameObject("/V"):
-                                            pypdf.generic.create_string_object(filled[field_name])
-                                    })
-                    with open(output_path, "wb") as f:
-                        writer.write(f)
-                    pdf_filled = True
-            except Exception as pdf_err:
-                logging.warning(f"PDF fill failed ({pdf_err}), using text fallback")
-
-        # Build human-readable summary (always — either as primary or alongside PDF)
+        # ---- Text summary (always saved alongside PDF) ----
         lines = [
             f"{'='*50}",
             f"FORM: {form_name}",
             f"Generated: {datetime.now().strftime('%d %b %Y %H:%M')}",
             f"{'='*50}",
         ]
-        for field, value in filled.items():
-            lines.append(f"  {field:<35} {value}")
-        if missing:
+        for label, value in display_rows:
+            lines.append(f"  {label:<40} {value}")
+        if missing_labels:
             lines.append("")
             lines.append("MISSING (not provided or not in profile):")
-            for m in missing:
+            for m in missing_labels:
                 lines.append(f"  [ ] {m}")
         summary_text = "\n".join(lines)
 
-        # Save text summary regardless
-        txt_path = OUTPUT_DIR / f"{form_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        txt_path = OUTPUT_DIR / f"{form_name}_{ts}.txt"
         txt_path.write_text(summary_text)
 
-        return {
-            "success":       True,
-            "form_name":     form_name,
-            "pdf_generated": pdf_filled,
-            "pdf_path":      str(output_path) if pdf_filled else None,
-            "txt_path":      str(txt_path),
-            "filled_fields": filled,
-            "missing_fields": missing,
-            "summary":       summary_text,
-            "note": (
-                "PDF form filled successfully." if pdf_filled
-                else "PDF template not found or not fillable — structured summary generated instead. "
-                     f"Place {form_name.lower()}.pdf in data/forms/ for PDF output."
-            ),
+        result: dict = {
+            "success":        True,
+            "form_name":      form_name,
+            "pdf_generated":  rl_ok,
+            "pdf_path":       str(output_path) if output_path else None,
+            "txt_path":       str(txt_path),
+            "filled_fields":  filled_dict,
+            "missing_fields": missing_labels,
+            "summary":        summary_text,
         }
+        if acroform_path:
+            result["acroform_pdf_path"] = str(acroform_path)
+            result["note"] = (
+                "Reportlab PDF generated (primary). "
+                "AcroForm PDF also saved — open in Adobe Acrobat for editable fields."
+            )
+        else:
+            result["note"] = "Reportlab PDF generated successfully."
+
+        return result
 
     except Exception as e:
         return {"success": False, "error": str(e)}

@@ -322,6 +322,45 @@ async def chat(req: ChatRequest):
         )
 
 
+@app.post("/api/chat/stream")
+async def chat_stream(req: ChatRequest):
+    """
+    Streaming chat via Server-Sent Events.
+    Each event: data: {"type": "reasoning"|"token"|"done", "text": "..."}
+    Frontend: use EventSource or fetch with ReadableStream.
+    """
+    import asyncio
+
+    def _run_agent(message: str):
+        agent = get_agent()
+        return list(agent.chat(message))
+
+    async def generate():
+        try:
+            loop = asyncio.get_event_loop()
+            tokens = await loop.run_in_executor(None, _run_agent, req.message)
+            for token in tokens:
+                stripped = token.strip()
+                if stripped.startswith("⚙") or stripped.startswith("→") or stripped.startswith("⚠"):
+                    event = json.dumps({"type": "reasoning", "text": token})
+                else:
+                    event = json.dumps({"type": "token", "text": token})
+                yield f"data: {event}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'type': 'error', 'text': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
 @app.get("/api/forms/{filename}")
 async def get_form(filename: str):
     """
