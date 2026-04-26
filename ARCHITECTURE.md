@@ -50,7 +50,8 @@ The output is always a **filled artifact** (form, cost breakdown, checklist) plu
                        │
                        ▼
 ┌──────────────────────────────────────────────────────────────┐
-│               REACT AGENT  (gemma4:e4b, Ollama)              │
+│       REACT AGENT  (claude-sonnet-4-6 by default;            │
+│                     Ollama + gemma4:e4b for offline)         │
 │                                                              │
 │  Principle: reason first, act only when needed              │
 │                                                              │
@@ -229,9 +230,22 @@ Chunks split at regulation section boundaries (not fixed token count):
 
 ---
 
-## Offline Architecture
+## LLM Provider Architecture
 
-Every component runs without internet access after initial setup:
+Claude API is the **default** provider — higher answer quality, no local GPU required.
+Ollama is the **offline fallback** — air-gap / SCIF environments with no internet.
+
+| Deployment | Provider | Config |
+|------------|----------|--------|
+| Default (cloud-connected) | Claude API (`claude-sonnet-4-6`) | `LLM_BASE_URL=https://api.anthropic.com/v1` |
+| Offline / air-gap | Ollama (`gemma4:e4b`) | `LLM_BASE_URL=http://localhost:11434/v1` |
+| Alternative cloud | llama.cpp server | `LLM_BASE_URL=http://localhost:8080/v1` |
+| Alternative cloud | LM Studio | `LLM_BASE_URL=http://localhost:1234/v1` |
+
+**Switching inference backends:** one environment variable change — zero code changes.
+The abstraction is already in place via the OpenAI-compatible client interface.
+
+### Offline components (Ollama mode)
 
 | Component | Offline mechanism |
 |-----------|------------------|
@@ -241,14 +255,6 @@ Every component runs without internet access after initial setup:
 | Embeddings | BAAI/bge-small-en-v1.5 cached by sentence-transformers |
 | Form filling | pypdf + local PDF templates |
 | Soldier profile | Local `profile.json` |
-
-**Switching inference backends:** one environment variable change.
-```
-LLM_BASE_URL=http://localhost:11434/v1   # Ollama (current)
-LLM_BASE_URL=http://localhost:8080/v1    # llama.cpp server
-LLM_BASE_URL=http://localhost:1234/v1    # LM Studio
-```
-Zero code changes. The abstraction is already in place.
 
 ---
 

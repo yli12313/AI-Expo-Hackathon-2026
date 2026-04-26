@@ -40,8 +40,8 @@ GSA_CACHE    = ROOT / "data" / "gsa_cache.json"
 VECTORSTORE  = ROOT / "vectorstore"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://localhost:11434/v1")
-LLM_MODEL    = os.getenv("LLM_MODEL",    "gemma4:e4b")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.anthropic.com/v1")
+LLM_MODEL    = os.getenv("LLM_MODEL",    "claude-sonnet-4-6")
 
 # ---------------------------------------------------------------------------
 # App + CORS
@@ -234,9 +234,20 @@ def _parse_agent_output(raw: str) -> tuple[str, list[dict], dict | None]:
     return answer, tool_calls, form_output
 
 
+def _detect_provider(base_url: str) -> str:
+    """Detect the LLM provider from the base URL."""
+    if "anthropic" in base_url:
+        return "claude"
+    if "openrouter" in base_url:
+        return "openrouter"
+    if "localhost" in base_url or "11434" in base_url:
+        return "ollama"
+    return "custom"
+
+
 def _check_ollama() -> bool:
     try:
-        r = requests.get(f"{LLM_BASE_URL.rstrip('/v1')}/api/tags", timeout=3)
+        r = requests.get("http://localhost:11434/api/tags", timeout=3)
         return r.status_code == 200
     except Exception:
         return False
@@ -261,19 +272,35 @@ def _count_vector_chunks() -> int:
 
 @app.get("/api/health")
 async def health():
-    """Check backend, Ollama, vector store, and GSA cache status."""
-    ollama_ok     = _check_ollama()
-    chunk_count   = _count_vector_chunks()
-    gsa_ok        = GSA_CACHE.exists() and GSA_CACHE.stat().st_size > 1000
+    """Check backend, LLM provider, vector store, and GSA cache status."""
+    provider    = _detect_provider(LLM_BASE_URL)
+    chunk_count = _count_vector_chunks()
+    gsa_ok      = GSA_CACHE.exists() and GSA_CACHE.stat().st_size > 1000
+
+    # For Ollama: actively ping localhost to confirm it is running.
+    # For cloud providers (Claude, OpenRouter, custom): assume ready — we
+    # cannot ping the API without burning tokens; missing key is caught at
+    # first chat request.
+    if provider == "ollama":
+        ollama_ok = _check_ollama()
+        llm_ready = ollama_ok
+    else:
+        ollama_ok = False
+        llm_ready = True
+
+    offline_ready = provider == "ollama" and llm_ready and chunk_count > 0 and gsa_ok
 
     return {
-        "status":               "ok" if ollama_ok else "degraded",
-        "ollama":               ollama_ok,
-        "model":                LLM_MODEL,
-        "vector_store_chunks":  chunk_count,
-        "vector_store_ready":   chunk_count > 0,
-        "gsa_cache_loaded":     gsa_ok,
-        "offline_ready":        ollama_ok and chunk_count > 0 and gsa_ok,
+        "status":              "ok",
+        "llm_provider":        provider,
+        "llm_ready":           llm_ready,
+        "model":               LLM_MODEL,
+        "vector_store_chunks": chunk_count,
+        "vector_store_ready":  chunk_count > 0,
+        "gsa_cache_loaded":    gsa_ok,
+        "offline_ready":       offline_ready,
+        # kept for backwards compatibility with frontend health status dots
+        "ollama":              ollama_ok,
     }
 
 
@@ -289,7 +316,7 @@ async def chat(req: ChatRequest):
     except Exception as e:
         log.error(f"Agent init failed: {e}")
         return ChatResponse(
-            response="The AI assistant failed to initialise. Make sure Ollama is running and the vector store exists (run ingest.py).",
+            response="The AI assistant failed to initialise. Make sure your LLM API key is set and the vector store exists (run ingest.py).",
             tool_calls=[],
             form_output=None,
             error=str(e),

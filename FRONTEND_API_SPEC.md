@@ -82,14 +82,21 @@ Check backend + model status. Call on mount to populate sidebar status dots.
 ```json
 {
   "status": "ok",
-  "ollama": true,
-  "model": "gemma4:e4b",
+  "llm_provider": "claude",
+  "llm_ready": true,
+  "model": "claude-sonnet-4-6",
   "vector_store_chunks": 2063,
   "vector_store_ready": true,
   "gsa_cache_loaded": true,
-  "offline_ready": true
+  "offline_ready": false,
+  "ollama": false
 }
 ```
+
+`llm_provider` values: `"claude"` | `"openrouter"` | `"ollama"` | `"custom"`
+`llm_ready`: true for all cloud providers (Claude, OpenRouter); true for Ollama only when localhost:11434 is reachable.
+`offline_ready`: true only when provider is `"ollama"` and Ollama + vector store + GSA cache are all available.
+`ollama`: kept for backwards compatibility — true only when provider is `"ollama"` and Ollama is reachable; false otherwise.
 
 ---
 
@@ -143,7 +150,7 @@ Clear the agent's conversation memory. Call when user clicks "New Conversation".
 ### Backend ✅ ALL DONE
 - [x] `POST /api/chat` — ReAct agent, structured `tool_calls` + `form_output`
 - [x] `POST /api/chat/stream` — SSE streaming endpoint live
-- [x] `GET /api/health` — real Ollama + ChromaDB + GSA status
+- [x] `GET /api/health` — provider-agnostic LLM + ChromaDB + GSA status (`llm_provider`, `llm_ready`, `ollama` for backwards compat)
 - [x] `GET /api/forms/{filename}` — PDF download with path traversal protection
 - [x] `POST /api/profile` + `GET /api/profile` — persists to `profile.json`
 - [x] `DELETE /api/chat/history` — clears conversation

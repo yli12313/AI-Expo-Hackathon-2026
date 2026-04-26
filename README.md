@@ -81,8 +81,8 @@ The LLM layer is model-agnostic. The same codebase runs against any OpenAI-compa
 
 | Mode | Use Case | Config |
 |------|----------|--------|
-| `gemma4:e4b` via Ollama | Air-gapped / SCIF environments, fully offline | Default |
-| Claude (Anthropic) | Cloud-connected environments, higher answer quality | `LLM_BASE_URL=https://api.anthropic.com/v1` |
+| Claude (Anthropic) | Cloud-connected environments, highest answer quality | **Default** — `LLM_BASE_URL=https://api.anthropic.com/v1` |
+| `gemma4:e4b` via Ollama | Air-gapped / SCIF environments, fully offline | `LLM_BASE_URL=http://localhost:11434/v1` |
 | GPT-4o (OpenAI) | Cloud-connected, alternative provider | `LLM_BASE_URL=https://api.openai.com/v1` |
 | Any OpenRouter model | Flexible cloud routing | `LLM_BASE_URL=https://openrouter.ai/api/v1` |
 
@@ -174,8 +174,10 @@ She's driving her POV from Fort Liberty."
 
 ### Prerequisites
 - Python 3.10+
-- [Ollama](https://ollama.com) installed and running with `gemma4:e4b` pulled
+- An LLM API key (Claude API recommended) OR [Ollama](https://ollama.com) for offline use
 - Node.js 18+
+
+Copy `.env.example` to `.env` and add your Claude API key to get started.
 
 ```bash
 # 1. Clone and set up Python environment
@@ -185,8 +187,8 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# 2. Pull the LLM (first time only)
-ollama pull gemma4:e4b
+# Optional: for offline/air-gap mode only
+# ollama pull gemma4:e4b
 
 # 3. Obtain regulation PDFs and place them in the correct directories
 #    PDFs are sourced from official public sources:
@@ -219,23 +221,28 @@ curl http://localhost:8000/api/health
 
 ---
 
-## Switching to Claude API
+## Switching LLM Providers
 
-Zero code changes — one `.env` update:
+Claude API is the default. Zero code changes — one `.env` update to switch:
 
 ```env
-# Claude direct
+# Default: Claude API
 LLM_BASE_URL=https://api.anthropic.com/v1
 LLM_MODEL=claude-sonnet-4-6
 LLM_API_KEY=sk-ant-...
 
-# Or via OpenRouter
+# Offline / air-gap: Ollama
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=gemma4:e4b
+LLM_API_KEY=ollama
+
+# Via OpenRouter
 LLM_BASE_URL=https://openrouter.ai/api/v1
 LLM_MODEL=anthropic/claude-sonnet-4-6
 LLM_API_KEY=sk-or-...
 ```
 
-The agent uses the OpenAI-compatible client interface — identical across Ollama, Claude, and OpenRouter.
+The agent uses the OpenAI-compatible client interface — identical across Claude, Ollama, and OpenRouter.
 
 ---
 
