@@ -66,12 +66,25 @@ ReAct Agent (agents/react_agent.py)
 | Frontend | React 18 + Vite + TypeScript + Tailwind CSS |
 | Backend | FastAPI + Uvicorn (Python 3.10+) |
 | Agent | ReAct loop — single model, 4 tools |
-| LLM | `qwen2.5:7b` via Ollama (local) — swappable to Claude/OpenRouter via `.env` |
+| LLM | Model-agnostic via OpenAI-compatible interface (see below) |
 | Vector store | ChromaDB (local, persistent, 2,063 chunks) |
 | Embeddings | `BAAI/bge-small-en-v1.5` (sentence-transformers, runs locally) |
 | Chunking | Semantic — splits at JTR section boundaries (`020101.` format) |
 | PDF output | reportlab (all forms) + PyPDF AcroForm fill (DD 1610) |
 | Per diem data | GSA FY2026 rates, pre-cached in `data/gsa_cache.json` |
+
+### Model Flexibility — One `.env` Change
+
+The LLM layer is model-agnostic. The same codebase runs against any OpenAI-compatible endpoint with no code changes — critical for real military deployment scenarios:
+
+| Mode | Use Case | Config |
+|------|----------|--------|
+| `qwen2.5:7b` via Ollama | Air-gapped / SCIF environments, fully offline | Default |
+| Claude (Anthropic) | Cloud-connected environments, higher answer quality | `LLM_BASE_URL=https://api.anthropic.com/v1` |
+| GPT-4o (OpenAI) | Cloud-connected, alternative provider | `LLM_BASE_URL=https://api.openai.com/v1` |
+| Any OpenRouter model | Flexible cloud routing | `LLM_BASE_URL=https://openrouter.ai/api/v1` |
+
+This matters operationally: a unit in a SCIF runs it entirely local; the same system in a garrison S1 shop can run against a more capable cloud model.
 
 ---
 
