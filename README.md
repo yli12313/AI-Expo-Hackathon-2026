@@ -10,7 +10,7 @@
 **Team Name:** Duty Line
 
 | Name |
-|------|------|
+|------|
 | Seth Poling |
 | Yingquan Li |
 | Bharath Kumar Swargam |
