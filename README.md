@@ -9,11 +9,12 @@
 
 **Team Name:** Duty Line
 
-| Name | Role |
+| Name |
 |------|------|
-| TBD | TBD |
-| TBD | TBD |
-| TBD | TBD |
+| Seth Poling |
+| Yingquan Li |
+| Bharath Kumar Swargam |
+| Ingrid Carlina Caceres Paredes |
 
 **Track:** GenAI.mil
 
