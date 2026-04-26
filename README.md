@@ -106,10 +106,6 @@ ReAct Agent (Thought -> Action -> Observation loop)
 
 Simple RAG answers questions. Duty Line **completes tasks**. A soldier doesn't want to know what the JTR says — they want a filled DD 1610 with correct math. ReAct lets the agent chain tool calls (look up rates → calculate cost → generate form) to produce an actionable artifact, not just text.
 
-### Offline-Ready Architecture
-
-Everything except the LLM already runs locally — vector store, per diem cache, PDF generation. The LLM is the only cloud dependency, and it plugs in through a swappable interface. When local models catch up in speed and quality, one config change makes the system fully offline. No code changes required.
-
 ### Model-Agnostic LLM Layer
 
 The agent connects to any OpenAI-compatible API through a single environment variable. No code changes, no redeployment — just swap the endpoint:
@@ -255,7 +251,6 @@ AI-Expo-Hackathon-2026/
 - **3 million** service members navigate military bureaucracy daily
 - **5–10 hours/week** spent by NCOs on administrative tasks that could be automated
 - **Cross-branch coverage** — JTR is DoD-wide, plus Army, Navy, Air Force, and Marine Corps regulations
-- **Offline-ready architecture** — all data and retrieval runs locally today; LLM can be swapped to a local model with one config change as hardware improves
 - **Verifiable** — judges can check the per diem rates, the JTR math, and the form fields. Every answer cites a specific regulation paragraph
 - **Extensible** — adding a new regulation domain = ingesting one PDF + zero code changes
 
