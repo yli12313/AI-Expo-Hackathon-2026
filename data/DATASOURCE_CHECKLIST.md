@@ -2,8 +2,9 @@
 
 This checklist is the working source-of-truth for what the `data` branch needs to download or wire up.
 
-## 1. Local PDFs in `data/`
+## 1. Local Files in `data/`
 
+- [x] **data/gsa_cache.json** — [GSA Per Diem cache](https://www.gsa.gov/travel/plan-a-trip/per-diem-rates/per-diem-files)
 - [x] **data/jtr/jtr.pdf** — [Joint Travel Regulations](https://media.defense.gov/2022/jan/04/2002917147/-1/-1/0/jtr.pdf)
 - [x] **data/forms/da_31.pdf** — [DA 31 Leave Request](https://armypubs.army.mil/pub/eforms/DR_a/ARN39556-DA_FORM_31-000-EFILE-1.pdf)
 - [x] **data/forms/da_4187.pdf** — [DA 4187 Personnel Action](https://armypubs.army.mil/pub/eforms/DR_a/ARN37028-DA_FORM_4187-000-EFILE-1.pdf)
