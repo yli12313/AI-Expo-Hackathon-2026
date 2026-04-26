@@ -7,6 +7,7 @@
   --color-olive-600: #445233;
   --color-olive-500: #5a6e3f;
   --color-slate-900: #0f1419;
+  --color-slate-850: #151b24;
   --color-slate-800: #1a2029;
   --color-slate-700: #242d3a;
   --color-slate-600: #374151;
@@ -14,11 +15,14 @@
   --color-amber-500: #f59e0b;
   --color-amber-300: #fcd34d;
   --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
   --color-red-400: #f87171;
   --color-blue-400: #60a5fa;
+  --color-cyan-400: #22d3ee;
   --color-zinc-400: #a1a1aa;
   --color-zinc-300: #d4d4d8;
   --color-zinc-500: #71717a;
+  --color-zinc-600: #52525b;
   --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", monospace;
 }
 
@@ -28,29 +32,34 @@ body {
   font-family: "Inter", system-ui, -apple-system, sans-serif;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: var(--color-slate-800);
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-slate-600);
-  border-radius: 3px;
-}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--color-slate-800); }
+::-webkit-scrollbar-thumb { background: var(--color-slate-600); border-radius: 3px; }
 
 @keyframes pulse-amber {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
 }
-.animate-pulse-amber {
-  animation: pulse-amber 2s ease-in-out infinite;
-}
+.animate-pulse-amber { animation: pulse-amber 2s ease-in-out infinite; }
 
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in {
-  animation: fadeIn 0.3s ease-out;
+.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in { animation: slideIn 0.25s ease-out; }
+
+@keyframes thinking {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.animate-thinking {
+  background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.08), transparent);
+  background-size: 200% 100%;
+  animation: thinking 2s ease-in-out infinite;
 }
