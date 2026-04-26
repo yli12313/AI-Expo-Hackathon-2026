@@ -106,9 +106,9 @@ ReAct Agent (Thought -> Action -> Observation loop)
 
 Simple RAG answers questions. Duty Line **completes tasks**. A soldier doesn't want to know what the JTR says — they want a filled DD 1610 with correct math. ReAct lets the agent chain tool calls (look up rates → calculate cost → generate form) to produce an actionable artifact, not just text.
 
-### Designed for Future Offline Use
+### Offline-Ready Architecture
 
-The system currently uses a cloud LLM API for fast, high-quality responses suited to garrison and office environments — where admin tasks actually happen. However, the architecture is built so that **everything except the LLM already runs locally**: regulation lookups hit a local ChromaDB vector store, per diem rates are pre-cached from GSA FY2026 data, and PDF generation runs entirely on-device. The LLM is the only cloud dependency, and it connects through a provider-agnostic interface — meaning a future deployment could swap in a local model (via Ollama or similar) with a single environment variable change and zero code modifications. No architectural changes required to go fully offline.
+Everything except the LLM already runs locally — vector store, per diem cache, PDF generation. The LLM is the only cloud dependency, and it plugs in through a swappable interface. When local models catch up in speed and quality, one config change makes the system fully offline. No code changes required.
 
 ### Model-Agnostic LLM Layer
 
