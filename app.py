@@ -81,6 +81,7 @@ def get_agent():
 class ChatRequest(BaseModel):
     message: str
     tab: str = "travel"
+    profile: dict | None = None   # accepted but ignored — backend uses profile.json
 
     @field_validator("message")
     @classmethod
@@ -99,12 +100,18 @@ class ChatRequest(BaseModel):
         return v if v in allowed else "travel"
 
 
+class ToolCallItem(BaseModel):
+    """Structured tool trace — matches the frontend ToolTrace type."""
+    tool:           str
+    label:          str
+    result_summary: str
+
+
 class ChatResponse(BaseModel):
-    response:        str
-    tools_used:      list[str]
-    reasoning_steps: list[str]
-    form_output:     dict | None
-    error:           str | None
+    response:    str
+    tool_calls:  list[ToolCallItem]   # frontend reads data.tool_calls
+    form_output: dict | None
+    error:       str | None
 
 
 class ProfileModel(BaseModel):
@@ -130,69 +137,101 @@ class ProfileModel(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _parse_agent_output(raw: str) -> tuple[str, list[str], list[str], dict | None]:
-    """
-    Split raw agent output into:
-      - reasoning_steps: lines starting with ⚙ or →
-      - final answer: everything else
-      - tools_used: tool names extracted from reasoning
-      - form_output: form metadata if fill_form was called
-    """
-    lines          = raw.split("\n")
-    reasoning      = []
-    answer_lines   = []
-    tools_used     = set()
-    form_output    = None
+TOOL_LABEL_TO_NAME = {
+    "Searching regulations":   "search_regulations",
+    "Getting per diem":        "get_per_diem",
+    "Calculating travel cost": "calculate_travel_cost",
+    "Filling":                 "fill_form",
+}
 
-    TOOL_MARKERS = {
-        "Searching regulations":    "search_regulations",
-        "Getting per diem":         "get_per_diem",
-        "Calculating travel cost":  "calculate_travel_cost",
-        "Filling":                  "fill_form",
-    }
 
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("⚙") or stripped.startswith("→"):
-            reasoning.append(stripped)
-            for marker, tool_name in TOOL_MARKERS.items():
-                if marker in stripped:
-                    tools_used.add(tool_name)
+def _parse_agent_output(raw: str) -> tuple[str, list[dict], dict | None]:
+    """
+    Parse raw agent output into:
+      - answer:      final response text
+      - tool_calls:  list of {tool, label, result_summary} matching frontend ToolTrace
+      - form_output: {form_name, filled_fields, missing_fields, pdf_path, summary} or None
+    """
+    lines        = raw.split("\n")
+    answer_lines = []
+    tool_calls   = []
+    form_output  = None
+    fill_used    = False
+
+    # Pair ⚙ header lines with their following → result lines
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+
+        if stripped.startswith("⚙"):
+            label = stripped.lstrip("⚙").strip()
+            # Determine canonical tool name
+            tool_name = "search_regulations"
+            for marker, name in TOOL_LABEL_TO_NAME.items():
+                if marker in label:
+                    tool_name = name
+                    break
+            if tool_name == "fill_form":
+                fill_used = True
+
+            # Grab the → result line that usually follows
+            result_summary = ""
+            if i + 1 < len(lines) and lines[i + 1].strip().startswith("→"):
+                result_summary = lines[i + 1].strip().lstrip("→").strip()
+                i += 1  # skip the result line so it doesn't appear in answer
+
+            tool_calls.append({
+                "tool":           tool_name,
+                "label":          label,
+                "result_summary": result_summary,
+            })
+
+        elif stripped.startswith("→") or stripped.startswith("⚠"):
+            pass  # observation/warning — already consumed above or skip
+
         elif stripped.startswith("[Error"):
-            # Surface errors cleanly
             answer_lines.append(stripped)
-        elif stripped.startswith("⚠"):
-            reasoning.append(stripped)
-        else:
-            answer_lines.append(line)
 
-    # Detect form output in reasoning trace
-    for step in reasoning:
-        if "fill_form" in tools_used or "Filling" in step:
-            # Look for PDF path in output dir
-            pdfs = sorted(OUTPUT_DIR.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
-            txts = sorted(OUTPUT_DIR.glob("*.txt"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if pdfs and (time.time() - pdfs[0].stat().st_mtime) < 30:
-                form_output = {
-                    "form_name":     pdfs[0].stem.split("_")[0] + "_" + pdfs[0].stem.split("_")[1],
-                    "pdf_available": True,
-                    "pdf_url":       f"/api/forms/{pdfs[0].name}",
-                    "txt_summary":   txts[0].read_text() if txts else "",
-                }
-            elif txts and (time.time() - txts[0].stat().st_mtime) < 30:
-                form_output = {
-                    "form_name":     txts[0].stem,
-                    "pdf_available": False,
-                    "pdf_url":       None,
-                    "txt_summary":   txts[0].read_text(),
-                }
-            break
+        else:
+            answer_lines.append(lines[i])
+
+        i += 1
+
+    # Detect form output when fill_form was called
+    if fill_used:
+        pdfs = sorted(OUTPUT_DIR.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+        txts = sorted(OUTPUT_DIR.glob("*.txt"), key=lambda p: p.stat().st_mtime, reverse=True)
+        recent_pdf = pdfs[0] if pdfs and (time.time() - pdfs[0].stat().st_mtime) < 30 else None
+        recent_txt = txts[0] if txts and (time.time() - txts[0].stat().st_mtime) < 30 else None
+
+        txt_content = recent_txt.read_text() if recent_txt else ""
+        form_name   = recent_pdf.stem if recent_pdf else (recent_txt.stem if recent_txt else "form")
+
+        # Parse txt_content into filled_fields for the frontend table
+        filled_fields:  dict[str, str] = {}
+        missing_fields: list[str]      = []
+        for line in txt_content.splitlines():
+            if ": " in line and not line.startswith("Missing"):
+                k, _, v = line.partition(": ")
+                filled_fields[k.strip()] = v.strip()
+            elif line.startswith("Missing") or line.startswith("- "):
+                field = line.lstrip("- ").strip()
+                if field:
+                    missing_fields.append(field)
+
+        form_output = {
+            "form_name":     form_name,
+            "filled_fields": filled_fields,
+            "missing_fields": missing_fields,
+            "pdf_path":      f"/api/forms/{recent_pdf.name}" if recent_pdf else None,
+            "summary":       txt_content,
+        }
 
     answer = "\n".join(answer_lines).strip()
     if not answer:
         answer = "I was unable to generate a response. Please try rephrasing."
 
-    return answer, list(tools_used), reasoning, form_output
+    return answer, tool_calls, form_output
 
 
 def _check_ollama() -> bool:
@@ -251,8 +290,7 @@ async def chat(req: ChatRequest):
         log.error(f"Agent init failed: {e}")
         return ChatResponse(
             response="The AI assistant failed to initialise. Make sure Ollama is running and the vector store exists (run ingest.py).",
-            tools_used=[],
-            reasoning_steps=[],
+            tool_calls=[],
             form_output=None,
             error=str(e),
         )
@@ -263,14 +301,13 @@ async def chat(req: ChatRequest):
             raw_parts.append(token)
 
         raw = "".join(raw_parts)
-        answer, tools_used, reasoning_steps, form_output = _parse_agent_output(raw)
+        answer, tool_calls, form_output = _parse_agent_output(raw)
 
-        log.info(f"chat done | tools={tools_used} | answer_len={len(answer)}")
+        log.info(f"chat done | tools={[t['tool'] for t in tool_calls]} | answer_len={len(answer)}")
 
         return ChatResponse(
             response=answer,
-            tools_used=tools_used,
-            reasoning_steps=reasoning_steps,
+            tool_calls=[ToolCallItem(**t) for t in tool_calls],
             form_output=form_output,
             error=None,
         )
@@ -279,8 +316,7 @@ async def chat(req: ChatRequest):
         log.error(f"Agent chat error: {e}", exc_info=True)
         return ChatResponse(
             response="An error occurred while processing your request. Please try again.",
-            tools_used=[],
-            reasoning_steps=[],
+            tool_calls=[],
             form_output=None,
             error=str(e),
         )

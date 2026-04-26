@@ -205,9 +205,14 @@ function FormPreview({ form }: { form: FormOutput }) {
           <p className="text-[10px] text-zinc-500">{Object.keys(form.filled_fields).length} fields filled</p>
         </div>
         {form.pdf_path && (
-          <button className="px-3 py-1 rounded bg-olive-700 text-amber-400 text-xs font-medium border border-olive-600/50 hover:bg-olive-600 transition-all">
+          <a
+            href={form.pdf_path}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1 rounded bg-olive-700 text-amber-400 text-xs font-medium border border-olive-600/50 hover:bg-olive-600 transition-all"
+          >
             Download PDF
-          </button>
+          </a>
         )}
       </div>
       <div className="px-4 py-3 space-y-1 max-h-48 overflow-y-auto">
@@ -348,6 +353,18 @@ export default function App() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Load real health status from backend on mount
+  useEffect(() => {
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => setSystemHealth({
+        ollama:      !!d.ollama,
+        vectorstore: !!d.vector_store_ready,
+        gsa_cache:   !!d.gsa_cache_loaded,
+      }))
+      .catch(() => setSystemHealth({ ollama: false, vectorstore: false, gsa_cache: false }));
+  }, []);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -409,7 +426,7 @@ export default function App() {
         {
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Connection error. Ensure the backend is running:\n\n  python -m uvicorn server:app --port 8000",
+          content: "Connection error. Ensure the backend is running:\n\n  python3 -m uvicorn app:app --reload --port 8000",
           timestamp: new Date(),
         },
       ]);
@@ -421,7 +438,7 @@ export default function App() {
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      handleSubmit(e as unknown as FormEvent);
     }
   }
 
