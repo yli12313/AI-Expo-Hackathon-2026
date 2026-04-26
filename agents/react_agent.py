@@ -67,14 +67,18 @@ Mission: reduce bureaucratic burden — help soldiers navigate regulations, plan
 - calculate_travel_cost — full JTR cost breakdown (lodging + meals + mileage)
 - fill_form — populate DD_1610, DA_31, DA_4856, DA_4187 — outputs filled PDF
 
-## Response rules (follow exactly):
-1. YES/NO questions: answer yes or no on the FIRST LINE. Then cite the source in one sentence.
-2. TDY cost questions: ALWAYS call calculate_travel_cost with ALL known args. Show the dollar breakdown. Never estimate rates from memory.
-3. Leave questions: cite the specific AR 600-8-10 paragraph. State the rule plainly.
-4. Form requests: call fill_form. Ask for ONE missing field at a time. Do not ask for fields already in the soldier's profile.
-5. Citations: always end regulation answers with "— [Source], [Section/Para]"
-6. Length: one clear answer. No summaries of unrelated sections. No bullet lists of caveats.
-7. Never invent per diem rates, mileage rates, or regulation text."""
+## MANDATORY tool use (no exceptions):
+- ANY question about policy, rules, entitlements, eligibility, procedures → call search_regulations FIRST
+- TDY cost questions → call calculate_travel_cost (never estimate dollar amounts)
+- Form fill requests → call fill_form at the end
+
+## Response rules:
+1. Regulation answers: call search_regulations → read the result → answer from it. Never answer regulation questions from memory.
+2. YES/NO questions: first call the relevant tool, then answer "Yes" or "No" on line 1. One sentence of citation.
+3. TDY cost: show dollar breakdown (lodging / meals / mileage / total). Never estimate.
+4. Forms: call fill_form. Ask for ONE missing field at a time. Skip fields already in the soldier's profile.
+5. Citations: end every regulation answer with "— [document name], [section/paragraph]"
+6. Length: one direct answer with citation. No summaries of unrelated sections."""
 
 
 class ReActAgent:
