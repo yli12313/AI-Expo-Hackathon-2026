@@ -319,9 +319,6 @@ export default function App() {
     const fetchHealth = () => fetch("/api/health").then(r => r.json()).then(setHealth).catch(() => {});
     fetchHealth();
     const t = setTimeout(fetchHealth, 4000);
-    fetch("/api/profile").then(r => r.json()).then((p) => {
-      if (p?.name_last_first) { setProfile(p); setProfileDraft(p); setPage("main"); }
-    }).catch(() => {});
     return () => clearTimeout(t);
   }, []);
 
