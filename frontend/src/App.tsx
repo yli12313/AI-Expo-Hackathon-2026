@@ -205,9 +205,108 @@ const EMPTY_PROFILE: SoldierProfile = {
   supervisor_name: "", supervisor_title: "",
 };
 
+// ─── Landing Page ────────────────────────────────────────────────────────────
+
+function LandingPage({ onComplete }: { onComplete: (profile: SoldierProfile) => void }) {
+  const [draft, setDraft] = useState<SoldierProfile>(EMPTY_PROFILE);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+
+  useEffect(() => {
+    fetch("/api/health").then(r => r.json()).then(setHealth).catch(() => {});
+    fetch("/api/profile").then(r => r.json()).then((p) => {
+      if (p?.name_last_first) { setDraft(p); }
+    }).catch(() => {});
+  }, []);
+
+  async function handleStart() {
+    if (!draft.name_last_first || !draft.rank) return;
+    try {
+      await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(draft),
+      });
+    } catch {}
+    onComplete(draft);
+  }
+
+  function handleSkip() {
+    onComplete(EMPTY_PROFILE);
+  }
+
+  const canStart = draft.name_last_first.trim() && draft.rank.trim();
+
+  return (
+    <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
+
+        <img src="/logo-cropped.png" alt="Duty Line" style={{ height: 80, marginBottom: 16 }} />
+
+        <h1 style={{ fontSize: 28, fontWeight: 800, color: "#1e293b", margin: "0 0 4px" }}>Duty Line</h1>
+        <p style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>AI-Powered Military Admin Assistant</p>
+        <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 32 }}>
+          TDY travel planning, leave requests, regulation lookup, and form generation — in seconds.
+        </p>
+
+        {/* System status */}
+        <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 32 }}>
+          {[
+            { label: "AI Model", ok: health ? (health.llm_ready ?? health.ollama ?? false) : null },
+            { label: `Regulations (${health?.vector_store_chunks ?? "..."})`, ok: health ? health.vector_store_chunks > 0 : null },
+            { label: "GSA Rates", ok: health?.gsa_cache_loaded ?? null },
+          ].map(s => (
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#94a3b8" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.ok === null ? "#cbd5e1" : s.ok ? "#22c55e" : "#ef4444" }} />
+              {s.label}
+            </div>
+          ))}
+        </div>
+
+        {/* Profile form */}
+        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, textAlign: "left", boxShadow: "0 4px 16px rgba(0,0,0,0.04)" }}>
+          <p style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", marginTop: 0, marginBottom: 4 }}>Soldier Profile</p>
+          <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>Your info auto-fills forms. Stored locally only.</p>
+
+          {([
+            ["name_last_first",  "Name (Last, First, MI) *"],
+            ["rank",             "Rank (e.g. SPC, SSG) *"],
+            ["grade",            "Grade (e.g. E-4)"],
+            ["unit",             "Unit (e.g. 1-503 INF, 82nd ABN)"],
+            ["installation",     "Installation (e.g. Fort Liberty)"],
+            ["supervisor_name",  "Supervisor Name"],
+          ] as [keyof SoldierProfile, string][]).map(([f, label]) => (
+            <input key={f} placeholder={label}
+              style={{ display: "block", width: "100%", marginBottom: 8, border: "1px solid #e2e8f0", borderRadius: 6, padding: "9px 12px", fontSize: 13, color: "#1e293b", outline: "none", boxSizing: "border-box" }}
+              value={draft[f]}
+              onChange={e => setDraft({ ...draft, [f]: e.target.value })}
+              onFocus={e => (e.currentTarget as HTMLElement).style.borderColor = NAVY}
+              onBlur={e => (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"}
+            />
+          ))}
+
+          <button onClick={handleStart} disabled={!canStart}
+            style={{ width: "100%", padding: "11px 0", background: canStart ? OLIVE : "#cbd5e1", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: canStart ? "pointer" : "not-allowed", marginTop: 8 }}>
+            Get Started
+          </button>
+
+          <button onClick={handleSkip}
+            style={{ width: "100%", padding: "8px 0", background: "none", border: "none", color: "#94a3b8", fontSize: 12, cursor: "pointer", marginTop: 8 }}>
+            Skip for now — set up later
+          </button>
+        </div>
+
+        <p style={{ fontSize: 11, color: "#cbd5e1", marginTop: 24 }}>
+          GenAI.mil Track | SCSP AI Expo Hackathon 2026
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
+  const [page, setPage]         = useState<"landing" | "main">("landing");
   const [tab, setTab]           = useState<Tab>("travel");
   const [status, setStatus]     = useState<AgentStatus>("idle");
   const [messages, setMessages] = useState<Record<Tab, Message[]>>({ travel: [], leave: [], regulation: [], eval: [] });
@@ -225,10 +324,9 @@ export default function App() {
   useEffect(() => {
     const fetchHealth = () => fetch("/api/health").then(r => r.json()).then(setHealth).catch(() => {});
     fetchHealth();
-    // Re-poll once after 4s to catch slow backend startup
     const t = setTimeout(fetchHealth, 4000);
     fetch("/api/profile").then(r => r.json()).then((p) => {
-      if (p?.name_last_first) { setProfile(p); setProfileDraft(p); }
+      if (p?.name_last_first) { setProfile(p); setProfileDraft(p); setPage("main"); }
     }).catch(() => {});
     return () => clearTimeout(t);
   }, []);
@@ -318,6 +416,10 @@ export default function App() {
                     status === "done" ? "Complete" : "Ready";
   const dotColor  = llmDown || status === "error" ? "#ef4444" : busy ? "#f59e0b" : "#22c55e";
   const dotAnim   = busy ? "pulse 1.5s infinite" : "none";
+
+  if (page === "landing") {
+    return <LandingPage onComplete={(p) => { setProfile(p); setProfileDraft(p); setPage("main"); }} />;
+  }
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#f8fafc", color: "#1e293b" }}>
