@@ -43,8 +43,9 @@ warnings.filterwarnings("ignore", message=".*existing embedding ID.*")
 LLM_BASE_URL   = os.getenv("LLM_BASE_URL",  "http://localhost:11434/v1")
 LLM_MODEL      = os.getenv("LLM_MODEL",     "qwen2.5:7b")
 LLM_API_KEY    = os.getenv("LLM_API_KEY",   "ollama")
-MAX_ITERATIONS = 6      # max tool calls per turn before forcing a final answer
-HISTORY_WINDOW = 12     # max messages kept in context (sliding window)
+MAX_ITERATIONS = 5      # max tool calls per turn before forcing a final answer
+HISTORY_WINDOW = 8      # max messages kept in context (sliding window)
+RAG_TOP_K      = 2      # chunks per search — keeps context under 4096 tokens
 PROFILE_FILE   = Path(__file__).parent.parent / "profile.json"
 
 # ---------------------------------------------------------------------------
@@ -56,8 +57,8 @@ Your mission: reduce bureaucratic burden for soldiers and veterans by helping th
 ## Documents you can search (use search_regulations tool):
 - JTR (Joint Travel Regulations): all TDY travel — per diem, lodging, mileage, GTC requirements, entitlements
 - AR 600-8-10: Army leave policy — accrual rates, leave types, DA 31 process, leave during deployment
-- AR 623-3: Officer and NCO evaluation reports
-- DA forms: DA 31 (leave), DA 4856 (counseling), DA 4187 (personnel action)
+- AR 623-3 / AFI 36-2406 / BUPERSINST 1610: evaluation reports by branch
+- MILPERSMAN 1050 / AFI 36-3003: Navy and Air Force leave policy
 
 ## Tools available:
 - search_regulations: look up exact regulation text with citations
@@ -71,13 +72,15 @@ Your mission: reduce bureaucratic burden for soldiers and veterans by helping th
 3. Use tool results as ground truth — never guess regulation text or dollar amounts
 4. For simple questions you can answer from context, answer directly
 5. Always cite the source document and section for regulation answers
-6. For TDY planning: get per diem THEN calculate cost THEN offer to fill DD 1610
+6. For TDY planning: call calculate_travel_cost with ALL args from the message including one_way_miles
 7. Ask for missing info one question at a time — don't overwhelm the soldier
 
 ## Rules:
 - Never invent regulation text, per diem rates, or form field requirements
+- Answer the EXACT question asked — do not summarize unrelated parts of a document
+- For yes/no questions: answer yes or no first, then cite the source
 - If you don't have enough info to complete a form, ask for what's missing
-- Be direct and concise — soldiers need actionable answers, not essays
+- Be direct and concise — one clear answer with citation, not a document summary
 - Always state which regulation your answer comes from"""
 
 
@@ -102,7 +105,9 @@ class ReActAgent:
         Process a user message. Yields response tokens as they stream.
         Yields tool observation lines (prefixed with ⚙) during reasoning.
         """
-        self._add_message("user", user_message)
+        # Enrich message with extracted structured fields before LLM sees it
+        enriched = self._enrich_message(user_message)
+        self._add_message("user", enriched)
 
         try:
             yield from self._react_loop()
@@ -110,6 +115,45 @@ class ReActAgent:
             error_msg = f"\n[Error in reasoning loop: {e}]"
             self._add_message("assistant", error_msg)
             yield error_msg
+
+    def _enrich_message(self, message: str) -> str:
+        """
+        Extract structured fields from natural language before the LLM reasons.
+        Injects them as hints so the model passes correct args to tools.
+        """
+        import re
+        hints = []
+
+        # Extract explicit mileage: "370 miles", "~370 mi"
+        miles_match = re.search(r"[~≈]?\s*(\d{2,4})\s*[-\s]?mi(?:les?)?", message, re.IGNORECASE)
+        if miles_match:
+            hints.append(f"one_way_miles={miles_match.group(1)}")
+        else:
+            # Look up known installation pair distances
+            from agents.tools import KNOWN_DISTANCES
+            msg_lower = message.lower()
+            for (orig, dest), miles in KNOWN_DISTANCES.items():
+                if orig in msg_lower and dest in msg_lower:
+                    hints.append(f"one_way_miles={miles} (looked up: {orig}→{dest})")
+                    break
+
+        # Extract number of days
+        days_match = re.search(r"(\d{1,2})\s*[-\s]?days?", message, re.IGNORECASE)
+        if days_match:
+            hints.append(f"travel_days={days_match.group(1)}")
+
+        # Extract travel mode
+        if re.search(r"\bPOV\b|personal\s+vehicle|own\s+car|driving\s+her|driving\s+his|driving\s+my", message, re.IGNORECASE):
+            hints.append("travel_mode=POV")
+        elif re.search(r"\bflight\b|\bfly\b|\bplane\b|\bairfare\b", message, re.IGNORECASE):
+            hints.append("travel_mode=PLANE")
+        elif re.search(r"\brental\b|\brent\s+a\s+car\b", message, re.IGNORECASE):
+            hints.append("travel_mode=RENTAL")
+
+        if not hints:
+            return message
+
+        return f"{message}\n[Extracted context: {', '.join(hints)}]"
 
     def reset(self):
         """Clear conversation history, keep profile."""
@@ -232,10 +276,13 @@ class ReActAgent:
         """Build the full message list: system + profile context + history."""
         system_content = SYSTEM_PROMPT
         if self._profile:
-            system_content += f"\n\n## Soldier profile (pre-loaded):\n{json.dumps(self._profile, indent=2)}"
+            # Compact profile — only key fields to save tokens
+            compact = {k: v for k, v in self._profile.items()
+                       if k in ("name_last_first", "rank", "unit", "installation")}
+            if compact:
+                system_content += f"\nSoldier: {json.dumps(compact)}"
 
         messages = [{"role": "system", "content": system_content}]
-        # Apply sliding window to history
         window = self._history[-HISTORY_WINDOW:] if len(self._history) > HISTORY_WINDOW else self._history
         messages.extend(window)
         return messages

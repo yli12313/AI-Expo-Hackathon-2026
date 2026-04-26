@@ -556,8 +556,8 @@ TOOL_SCHEMAS = [
                     },
                     "n": {
                         "type": "integer",
-                        "description": "Number of results to return (default 4, max 8)",
-                        "default": 4,
+                        "description": "Number of results to return (default 2, max 4)",
+                        "default": 2,
                     },
                 },
                 "required": ["query"],
