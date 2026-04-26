@@ -209,14 +209,7 @@ const EMPTY_PROFILE: SoldierProfile = {
 
 function LandingPage({ onComplete }: { onComplete: (profile: SoldierProfile) => void }) {
   const [draft, setDraft] = useState<SoldierProfile>(EMPTY_PROFILE);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-
-  useEffect(() => {
-    fetch("/api/health").then(r => r.json()).then(setHealth).catch(() => {});
-    fetch("/api/profile").then(r => r.json()).then((p) => {
-      if (p?.name_last_first) { setDraft(p); }
-    }).catch(() => {});
-  }, []);
+  const [step, setStep] = useState<"welcome" | "profile">("welcome");
 
   async function handleStart() {
     if (!draft.name_last_first || !draft.rank) return;
@@ -230,68 +223,85 @@ function LandingPage({ onComplete }: { onComplete: (profile: SoldierProfile) => 
     onComplete(draft);
   }
 
-  function handleSkip() {
-    onComplete(EMPTY_PROFILE);
-  }
-
   const canStart = draft.name_last_first.trim() && draft.rank.trim();
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
-      <div style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
+    <div style={{ minHeight: "100vh", background: NAVY, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", inset: 0, opacity: 0.03, backgroundImage: "linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
 
-        <img src="/logo-cropped.png" alt="Duty Line" style={{ height: 120, marginBottom: 32 }} />
+      <div style={{ position: "relative", zIndex: 1, maxWidth: 440, width: "100%", padding: "0 24px" }}>
+        {step === "welcome" ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center" }}>
+            <img src="/logo-cropped.png" alt="Duty Line" style={{ height: 180, marginBottom: 40, filter: "brightness(1.1)" }} />
 
-        {/* System status */}
-        <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 32 }}>
-          {[
-            { label: "AI Model", ok: health ? (health.llm_ready ?? health.ollama ?? false) : null },
-            { label: `Regulations (${health?.vector_store_chunks ?? "..."})`, ok: health ? health.vector_store_chunks > 0 : null },
-            { label: "GSA Rates", ok: health?.gsa_cache_loaded ?? null },
-          ].map(s => (
-            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#94a3b8" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: s.ok === null ? "#cbd5e1" : s.ok ? "#22c55e" : "#ef4444" }} />
-              {s.label}
+            <div style={{ display: "flex", gap: 24, marginBottom: 40 }}>
+              {[
+                { label: "TDY Travel", desc: "Per diem & forms" },
+                { label: "Leave / HR", desc: "DA 31 & policy" },
+                { label: "Regulations", desc: "JTR & ARs" },
+                { label: "Evaluations", desc: "NCOERs & OERs" },
+              ].map(m => (
+                <div key={m.label} style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.8)" }}>{m.label}</div>
+                  <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginTop: 2 }}>{m.desc}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
 
-        {/* Profile form */}
-        <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 12, padding: 24, textAlign: "left", boxShadow: "0 4px 16px rgba(0,0,0,0.04)" }}>
-          <p style={{ fontSize: 14, fontWeight: 600, color: "#1e293b", marginTop: 0, marginBottom: 4 }}>Soldier Profile</p>
-          <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 16 }}>Your info auto-fills forms. Stored locally only.</p>
+            <button onClick={() => setStep("profile")}
+              style={{ padding: "12px 48px", background: CRIMSON, color: "#fff", border: "none", borderRadius: 8, fontSize: 15, fontWeight: 600, cursor: "pointer", letterSpacing: "0.02em", transition: "opacity 0.2s" }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = "0.9"}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = "1"}
+            >
+              Get Started
+            </button>
 
-          {([
-            ["name_last_first",  "Name (Last, First, MI) *"],
-            ["rank",             "Rank (e.g. SPC, SSG) *"],
-            ["grade",            "Grade (e.g. E-4)"],
-            ["unit",             "Unit (e.g. 1-503 INF, 82nd ABN)"],
-            ["installation",     "Installation (e.g. Fort Liberty)"],
-            ["supervisor_name",  "Supervisor Name"],
-          ] as [keyof SoldierProfile, string][]).map(([f, label]) => (
-            <input key={f} placeholder={label}
-              style={{ display: "block", width: "100%", marginBottom: 8, border: "1px solid #e2e8f0", borderRadius: 6, padding: "9px 12px", fontSize: 13, color: "#1e293b", outline: "none", boxSizing: "border-box" }}
-              value={draft[f]}
-              onChange={e => setDraft({ ...draft, [f]: e.target.value })}
-              onFocus={e => (e.currentTarget as HTMLElement).style.borderColor = NAVY}
-              onBlur={e => (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"}
-            />
-          ))}
+            <button onClick={() => onComplete(EMPTY_PROFILE)}
+              style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", fontSize: 12, cursor: "pointer", marginTop: 16 }}>
+              Skip setup
+            </button>
 
-          <button onClick={handleStart} disabled={!canStart}
-            style={{ width: "100%", padding: "11px 0", background: canStart ? OLIVE : "#cbd5e1", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: canStart ? "pointer" : "not-allowed", marginTop: 8 }}>
-            Get Started
-          </button>
+            <div style={{ marginTop: 48, fontSize: 10, color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              GenAI.mil Track | SCSP AI Expo Hackathon 2026
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+            <img src="/logo-cropped.png" alt="Duty Line" style={{ height: 60, marginBottom: 24, filter: "brightness(1.1)" }} />
 
-          <button onClick={handleSkip}
-            style={{ width: "100%", padding: "8px 0", background: "none", border: "none", color: "#94a3b8", fontSize: 12, cursor: "pointer", marginTop: 8 }}>
-            Skip for now — set up later
-          </button>
-        </div>
+            <div style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 28 }}>
+              <p style={{ fontSize: 15, fontWeight: 600, color: "#fff", marginTop: 0, marginBottom: 4 }}>Soldier Profile</p>
+              <p style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 20 }}>Auto-fills your forms. Stored on this device only.</p>
 
-        <p style={{ fontSize: 11, color: "#cbd5e1", marginTop: 24 }}>
-          GenAI.mil Track | SCSP AI Expo Hackathon 2026
-        </p>
+              {([
+                ["name_last_first",  "Name (Last, First, MI)"],
+                ["rank",             "Rank (e.g. SPC, SSG)"],
+                ["grade",            "Grade (e.g. E-4)"],
+                ["unit",             "Unit (e.g. 1-503 INF, 82nd ABN)"],
+                ["installation",     "Installation (e.g. Fort Liberty)"],
+                ["supervisor_name",  "Supervisor Name"],
+              ] as [keyof SoldierProfile, string][]).map(([f, label]) => (
+                <input key={f} placeholder={label}
+                  style={{ display: "block", width: "100%", marginBottom: 10, border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, padding: "10px 14px", fontSize: 13, color: "#fff", background: "rgba(255,255,255,0.06)", outline: "none", boxSizing: "border-box", transition: "border-color 0.2s" }}
+                  value={draft[f]}
+                  onChange={e => setDraft({ ...draft, [f]: e.target.value })}
+                  onFocus={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.3)"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.1)"; }}
+                  onBlur={e => { (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.1)"; (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                />
+              ))}
+
+              <button onClick={handleStart} disabled={!canStart}
+                style={{ width: "100%", padding: "12px 0", background: canStart ? CRIMSON : "rgba(255,255,255,0.1)", color: canStart ? "#fff" : "rgba(255,255,255,0.3)", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: canStart ? "pointer" : "not-allowed", marginTop: 4, transition: "background 0.2s" }}>
+                Continue
+              </button>
+
+              <button onClick={() => setStep("welcome")}
+                style={{ width: "100%", padding: "8px 0", background: "none", border: "none", color: "rgba(255,255,255,0.3)", fontSize: 12, cursor: "pointer", marginTop: 8 }}>
+                Back
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
