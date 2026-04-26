@@ -1,79 +1,113 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap');
 
 @theme {
-  /* Camo earth backgrounds */
-  --color-slate-900: #0e0f0b;
-  --color-slate-800: #181a14;
-  --color-slate-700: #23271c;
-  --color-slate-600: #353b28;
+  /* Core dark government palette */
+  --color-slate-900: #0a0c0f;
+  --color-slate-800: #0f1318;
+  --color-slate-750: #131820;
+  --color-slate-700: #1a2130;
+  --color-slate-600: #243044;
+  --color-slate-500: #2e3f5a;
+  --color-slate-400: #4a6080;
 
-  /* Olive structure */
-  --color-olive-900: #1a1f16;
-  --color-olive-800: #252b1f;
-  --color-olive-700: #333d29;
-  --color-olive-600: #445233;
-  --color-olive-500: #5a6e3f;
+  /* Logo navy */
+  --color-navy-900: #060810;
+  --color-navy-800: #0c1020;
+  --color-navy-700: #101830;
+  --color-navy-600: #1a2848;
+  --color-navy-500: #243660;
+  --color-navy-400: #2e4878;
+  --color-navy-300: #4a6fa8;
+  --color-navy-200: #7b9fd4;
+  --color-navy-100: #b8cfe8;
+  --color-navy-50:  #e8f0f8;
 
-  /* Logo navy — primary accent */
-  --color-navy-900: #0d0f1a;
-  --color-navy-800: #141829;
-  --color-navy-700: #1e2540;
-  --color-navy-600: #2b3560;
-  --color-navy-500: #3a4a82;
-  --color-navy-400: #4a5fa8;
-  --color-navy-300: #7b8fc8;
-  --color-navy-200: #b0bde0;
-  --color-navy-100: #dde3f2;
-  --color-navy-50:  #f0f3fa;
-
-  /* Logo crimson — secondary accent */
-  --color-crimson-700: #5c0e18;
-  --color-crimson-600: #7c1321;
-  --color-crimson-500: #9e1a2c;
-  --color-crimson-400: #b91c33;
-  --color-crimson-300: #d44057;
-  --color-crimson-200: #e8899a;
-  --color-crimson-100: #f5cdd4;
-  --color-crimson-50:  #fdf0f2;
+  /* Logo crimson */
+  --color-crimson-700: #3d0810;
+  --color-crimson-600: #5c1020;
+  --color-crimson-500: #7c1830;
+  --color-crimson-400: #9e2040;
+  --color-crimson-300: #c43050;
+  --color-crimson-200: #e05070;
+  --color-crimson-100: #f0a0b0;
 
   /* Functional */
-  --color-green-400: #4ade80;
-  --color-red-400:   #f87171;
-  --color-blue-400:  #60a5fa;
-  --color-zinc-400:  #a1a1aa;
-  --color-zinc-300:  #d4d4d8;
-  --color-zinc-500:  #71717a;
-  --color-amber-400: #fbbf24;
+  --color-green-400:  #22c55e;
+  --color-green-500:  #16a34a;
+  --color-red-400:    #ef4444;
+  --color-amber-400:  #f59e0b;
+  --color-zinc-600:   #374151;
+  --color-zinc-500:   #4b5563;
+  --color-zinc-400:   #6b7280;
+  --color-zinc-300:   #9ca3af;
+  --color-zinc-200:   #d1d5db;
+  --color-zinc-100:   #f3f4f6;
 
-  --font-mono: "JetBrains Mono", "Fira Code", "SF Mono", monospace;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
 }
 
 body {
-  background-color: var(--color-slate-900);
-  background-image:
-    radial-gradient(ellipse 80px 60px at 12% 18%, rgba(74,83,48,0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 120px 80px at 55% 8%, rgba(53,59,40,0.22) 0%, transparent 70%),
-    radial-gradient(ellipse 60px 90px at 88% 25%, rgba(90,110,63,0.12) 0%, transparent 70%),
-    radial-gradient(ellipse 100px 50px at 30% 55%, rgba(42,48,32,0.20) 0%, transparent 70%),
-    radial-gradient(ellipse 70px 100px at 75% 70%, rgba(74,83,48,0.15) 0%, transparent 70%),
-    radial-gradient(ellipse 90px 55px at 5% 85%, rgba(53,59,40,0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 55px 75px at 92% 90%, rgba(35,39,28,0.25) 0%, transparent 70%);
-  color: #e4e4e7;
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background-color: #0a0c0f;
+  color: #c8d4e0;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--color-slate-800); }
-::-webkit-scrollbar-thumb { background: var(--color-slate-600); border-radius: 3px; }
+/* Thin classification-style top stripe */
+body::before {
+  content: 'UNCLASSIFIED // FOR OFFICIAL USE ONLY';
+  display: block;
+  width: 100%;
+  background: #16a34a;
+  color: #fff;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-align: center;
+  padding: 3px 0;
+  position: fixed;
+  top: 0;
+  z-index: 1000;
+}
 
-@keyframes pulse-brand {
+#root {
+  padding-top: 20px;
+  height: 100vh;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #0f1318; }
+::-webkit-scrollbar-thumb { background: #243044; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #2e3f5a; }
+
+@keyframes pulse-status {
   0%, 100% { opacity: 1; }
-  50%       { opacity: 0.5; }
+  50%       { opacity: 0.4; }
 }
-.animate-pulse-amber { animation: pulse-brand 2s ease-in-out infinite; }
+.animate-pulse-amber { animation: pulse-status 1.8s ease-in-out infinite; }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.animate-fade-in { animation: fadeIn 0.3s ease-out; }
+.animate-fade-in { animation: fadeSlideIn 0.2s ease-out; }
+
+/* Scanline overlay on sidebar */
+.scanline::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
