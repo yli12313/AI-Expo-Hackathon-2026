@@ -106,9 +106,9 @@ ReAct Agent (Thought -> Action -> Observation loop)
 
 Simple RAG answers questions. Duty Line **completes tasks**. A soldier doesn't want to know what the JTR says — they want a filled DD 1610 with correct math. ReAct lets the agent chain tool calls (look up rates → calculate cost → generate form) to produce an actionable artifact, not just text.
 
-### Offline-Capable
+### Designed for Future Offline Use
 
-**Zero external API calls at runtime.** Regulation lookups hit local ChromaDB. Per diem rates are pre-cached from GSA FY2026 data. PDF generation runs locally. The only external dependency is the LLM — which can run locally via Ollama, making the entire system air-gap and SCIF deployable.
+The system currently uses a cloud LLM API for fast, high-quality responses suited to garrison and office environments — where admin tasks actually happen. However, the architecture is built so that **everything except the LLM already runs locally**: regulation lookups hit a local ChromaDB vector store, per diem rates are pre-cached from GSA FY2026 data, and PDF generation runs entirely on-device. The LLM is the only cloud dependency, and it connects through a provider-agnostic interface — meaning a future deployment could swap in a local model (via Ollama or similar) with a single environment variable change and zero code modifications. No architectural changes required to go fully offline.
 
 ### Model-Agnostic LLM Layer
 
@@ -116,11 +116,11 @@ One environment variable change switches the LLM provider. No code changes:
 
 | Mode | Use Case | Config |
 |------|----------|--------|
-| **Claude API** | Cloud-connected, highest quality | Default — `LLM_BASE_URL=https://api.anthropic.com/v1` |
-| Ollama (gemma4:e4b) | Air-gapped / SCIF, fully offline | `LLM_BASE_URL=http://localhost:11434/v1` |
-| OpenRouter | Flexible cloud routing, any model | `LLM_BASE_URL=https://openrouter.ai/api/v1` |
+| **Claude API** | Production use — fast, high-quality responses | **Default** — `LLM_BASE_URL=https://api.anthropic.com/v1` |
+| OpenRouter | Flexible model selection, cost optimization | `LLM_BASE_URL=https://openrouter.ai/api/v1` |
+| Ollama (future) | Offline/air-gap environments when local hardware supports it | `LLM_BASE_URL=http://localhost:11434/v1` |
 
-This matters operationally: a unit in a SCIF runs entirely local; the same system in a garrison S1 shop uses a cloud model for higher quality.
+The system is built for where admin work happens — garrison offices, S1 shops, and home stations with network access. The offline path exists in the architecture for future deployment scenarios as local model performance improves.
 
 ---
 
@@ -255,7 +255,7 @@ AI-Expo-Hackathon-2026/
 - **3 million** service members navigate military bureaucracy daily
 - **5–10 hours/week** spent by NCOs on administrative tasks that could be automated
 - **Cross-branch coverage** — JTR is DoD-wide, plus Army, Navy, Air Force, and Marine Corps regulations
-- **Offline-capable** — runs in a SCIF or deployed environment with no internet
+- **Offline-ready architecture** — all data and retrieval runs locally today; LLM can be swapped to a local model with one config change as hardware improves
 - **Verifiable** — judges can check the per diem rates, the JTR math, and the form fields. Every answer cites a specific regulation paragraph
 - **Extensible** — adding a new regulation domain = ingesting one PDF + zero code changes
 
