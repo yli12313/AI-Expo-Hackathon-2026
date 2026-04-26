@@ -614,17 +614,18 @@ export default function App() {
 
                         {/* Form download */}
                         {msg.form_output && (
-                          <div style={{ margin: "0 16px 12px", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
-                            <div style={{ background: "#f8fafc", padding: "8px 14px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontFamily: "monospace", fontSize: 11, color: "#64748b" }}>FORM: {msg.form_output.form_name}</span>
-                              {msg.form_output.pdf_available && msg.form_output.pdf_url && (
-                                <a href={msg.form_output.pdf_url} download style={{ fontSize: 12, fontWeight: 600, color: CRIMSON, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
-                                  ↓ Download {msg.form_output.form_name} (PDF)
+                          <div style={{ margin: "12px 16px", border: `2px solid ${CRIMSON}33`, borderRadius: 8, overflow: "hidden", background: "#fef2f2" }}>
+                            <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>
+                                {msg.form_output.form_name.replace(/_\d+.*/, "").replace(/_/g, " ")}
+                              </span>
+                              {msg.form_output.pdf_available && msg.form_output.pdf_url ? (
+                                <a href={msg.form_output.pdf_url} download style={{ padding: "6px 16px", background: CRIMSON, color: "#fff", borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: "none" }}>
+                                  Download PDF
                                 </a>
+                              ) : (
+                                <span style={{ fontSize: 12, color: "#94a3b8" }}>PDF not available</span>
                               )}
-                            </div>
-                            <div style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 11, color: "#64748b", whiteSpace: "pre-wrap", maxHeight: 140, overflowY: "auto" }}>
-                              {msg.form_output.txt_summary}
                             </div>
                           </div>
                         )}
