@@ -240,13 +240,7 @@ function LandingPage({ onComplete }: { onComplete: (profile: SoldierProfile) => 
     <div style={{ minHeight: "100vh", background: "#f8fafc", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ maxWidth: 420, width: "100%", textAlign: "center" }}>
 
-        <img src="/logo-cropped.png" alt="Duty Line" style={{ height: 80, marginBottom: 16 }} />
-
-        <h1 style={{ fontSize: 28, fontWeight: 800, color: "#1e293b", margin: "0 0 4px" }}>Duty Line</h1>
-        <p style={{ fontSize: 13, color: "#64748b", marginBottom: 8 }}>AI-Powered Military Admin Assistant</p>
-        <p style={{ fontSize: 12, color: "#94a3b8", marginBottom: 32 }}>
-          TDY travel planning, leave requests, regulation lookup, and form generation — in seconds.
-        </p>
+        <img src="/logo-cropped.png" alt="Duty Line" style={{ height: 120, marginBottom: 32 }} />
 
         {/* System status */}
         <div style={{ display: "flex", justifyContent: "center", gap: 16, marginBottom: 32 }}>
