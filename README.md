@@ -57,6 +57,8 @@ ReAct Agent (agents/react_agent.py)
 
 **Why ReAct, not simple RAG:** Soldiers come to complete tasks (fill a form, plan a trip), not just ask questions. ReAct lets the agent chain tool calls to produce an artifact — a cost breakdown, a signed form — not just an answer.
 
+**Zero external API calls at runtime.** Regulation lookups hit local ChromaDB. Per diem rates are pre-cached from GSA FY2026 data. PDF generation runs locally via reportlab. The only external dependency is the LLM — which can itself run locally via Ollama, making the entire system air-gap capable.
+
 ---
 
 ## Tech Stack
@@ -186,15 +188,23 @@ pip install -r requirements.txt
 # 2. Pull the LLM (first time only)
 ollama pull qwen2.5:7b
 
-# 3. Download regulation PDFs and build the vector store (first time only, ~5–10 min)
-#    ingest.py auto-downloads all 9 regulation PDFs from official DoD/Army/Navy/AF sources,
-#    chunks them semantically, embeds with a local model, and stores in ChromaDB.
+# 3. Obtain regulation PDFs and place them in the correct directories
+#    PDFs are sourced from official public sources:
+#      JTR       → data/jtr/           (media.defense.gov)
+#      Army regs → data/army_regs/     (armypubs.army.mil)
+#      Navy regs → data/navy_regs/     (mynavyhr.navy.mil)
+#      AF regs   → data/af_regs/       (e-publishing.af.mil)
+#      Marine    → data/marine_regs/   (marines.mil)
+#      DoD FMR   → data/dod_regs/      (comptroller.defense.gov)
+
+# 4. Build the vector store (first time only, ~5–10 min)
+#    Chunks PDFs semantically, embeds with a local model, stores in ChromaDB.
 python3 ingest.py
 
-# 4. Start the backend (Terminal 1)
+# 5. Start the backend (Terminal 1)
 python3 -m uvicorn app:app --reload --port 8000
 
-# 5. Start the frontend (Terminal 2)
+# 6. Start the frontend (Terminal 2)
 cd frontend
 npm install
 npm run dev
