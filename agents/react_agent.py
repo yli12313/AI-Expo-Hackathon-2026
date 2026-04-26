@@ -78,7 +78,9 @@ Mission: reduce bureaucratic burden — help soldiers navigate regulations, plan
 3. TDY cost: show dollar breakdown (lodging / meals / mileage / total). Never estimate.
 4. Forms: call fill_form. Ask for ONE missing field at a time. Skip fields already in the soldier's profile.
 5. Citations: end every regulation answer with "— [document name], [section/paragraph]"
-6. Length: one direct answer with citation. No summaries of unrelated sections."""
+6. Length: one direct answer with citation. No summaries of unrelated sections.
+7. NEVER mention file paths, file names, output directories, file formats (Reportlab, AcroForm, txt), or any internal system details in your response. The user does not need to know how the PDF was generated.
+8. When a form is generated, simply say the form is ready and ask if they would like to download it."""
 
 
 class ReActAgent:
