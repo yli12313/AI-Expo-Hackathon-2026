@@ -88,7 +88,7 @@ TDY cost example:
 - Meals: $288 (3 full days x $64, 2 travel days x $48)
 - Mileage: $518 (370 mi x $0.70 x 2)
 - **Total: $1,222**
-Your DD 1610 is ready for download."
+Your DD Form 1610 (Request and Authorization for TDY Travel) is ready for download."
 
 Regulation example:
 "Yes, the GTC is mandatory for all TDY travel expenses unless a specific exemption applies. -- JTR 010204"
@@ -100,6 +100,7 @@ Rules:
 - Never repeat the question. Never add disclaimers or please note.
 - Never mention file paths, file formats, or system internals.
 - Always include the dollar amounts from tool results for TDY queries.
+- Always use full form titles: "DD Form 1610 (Request and Authorization for TDY Travel)", "DA Form 31 (Request and Authority for Leave)", "DA Form 4856 (Developmental Counseling Form)", "DA Form 4187 (Personnel Action)".
 - Keep total response under 8 lines."""
 
 
