@@ -38,8 +38,8 @@ COLLECTION    = "dutyline"
 CHUNK_MIN_TOKENS = 150
 CHUNK_MAX_TOKENS = 600
 
-# Phase 1 sources — priority order
 SOURCES = [
+    # Travel
     {
         "url":         "https://media.defense.gov/2022/jan/04/2002917147/-1/-1/0/jtr.pdf",
         "local_path":  DATA_DIR / "jtr" / "jtr.pdf",
@@ -48,6 +48,7 @@ SOURCES = [
         "doc_type":    "regulation",
         "source_file": "jtr.pdf",
     },
+    # Leave — Army
     {
         "url":         "https://armypubs.army.mil/epubs/DR_pubs/DR_a/ARN32388-AR_600-8-10-001-WEB-1.pdf",
         "local_path":  DATA_DIR / "army_regs" / "ar_600_8_10.pdf",
@@ -55,6 +56,69 @@ SOURCES = [
         "branch":      "army",
         "doc_type":    "regulation",
         "source_file": "ar_600_8_10.pdf",
+    },
+    # Leave — Navy
+    {
+        "url":         "https://www.mynavyhr.navy.mil/Portals/55/Reference/MILPERSMAN/1000/1050Leave.pdf",
+        "local_path":  DATA_DIR / "navy_regs" / "milpersman_1050.pdf",
+        "domain":      "leave",
+        "branch":      "navy",
+        "doc_type":    "regulation",
+        "source_file": "milpersman_1050.pdf",
+    },
+    # Leave — Air Force
+    {
+        "url":         "https://static.e-publishing.af.mil/production/1/af_a1/publication/afi36-3003/afi36-3003.pdf",
+        "local_path":  DATA_DIR / "af_regs" / "afi_36_3003.pdf",
+        "domain":      "leave",
+        "branch":      "airforce",
+        "doc_type":    "regulation",
+        "source_file": "afi_36_3003.pdf",
+    },
+    # Eval — Army
+    {
+        "url":         "https://armypubs.army.mil/epubs/DR_pubs/DR_a/ARN32388-AR_623-3-000-WEB-1.pdf",
+        "local_path":  DATA_DIR / "army_regs" / "ar_623_3.pdf",
+        "domain":      "eval",
+        "branch":      "army",
+        "doc_type":    "regulation",
+        "source_file": "ar_623_3.pdf",
+    },
+    # Eval — Navy
+    {
+        "url":         "https://www.mynavyhr.navy.mil/Portals/55/Reference/instructions/BUPERS/BUPERSINST_1610.10F.pdf",
+        "local_path":  DATA_DIR / "navy_regs" / "bupersinst_1610_10f.pdf",
+        "domain":      "eval",
+        "branch":      "navy",
+        "doc_type":    "regulation",
+        "source_file": "bupersinst_1610_10f.pdf",
+    },
+    # Eval — Air Force
+    {
+        "url":         "https://static.e-publishing.af.mil/production/1/af_a1/publication/afi36-2406/afi36-2406.pdf",
+        "local_path":  DATA_DIR / "af_regs" / "afi_36_2406.pdf",
+        "domain":      "eval",
+        "branch":      "airforce",
+        "doc_type":    "regulation",
+        "source_file": "afi_36_2406.pdf",
+    },
+    # Pay — DoD wide
+    {
+        "url":         "https://comptroller.defense.gov/Portals/45/documents/fmr/Volume_07a.pdf",
+        "local_path":  DATA_DIR / "dod_regs" / "dod_fmr_vol7a.pdf",
+        "domain":      "regs",
+        "branch":      "defense_wide",
+        "doc_type":    "regulation",
+        "source_file": "dod_fmr_vol7a.pdf",
+    },
+    # Marines — evals
+    {
+        "url":         "https://www.marines.mil/portals/1/Publications/MCO%201610.7.pdf",
+        "local_path":  DATA_DIR / "marine_regs" / "mco_1610_7.pdf",
+        "domain":      "eval",
+        "branch":      "marines",
+        "doc_type":    "regulation",
+        "source_file": "mco_1610_7.pdf",
     },
 ]
 
