@@ -9,7 +9,7 @@ Frontend dev server proxies `/api/*` → `http://localhost:8000`.
 ## Endpoints
 
 ### POST `/api/chat`
-Main chat endpoint. Sends a message, gets back a response with tool trace.
+Main chat endpoint. Runs the ReAct agent and returns a structured response.
 
 **Request:**
 ```json
@@ -25,69 +25,99 @@ Main chat endpoint. Sends a message, gets back a response with tool trace.
 **Response:**
 ```json
 {
-  "response": "Based on JTR Section 020309, here is the cost breakdown...",
+  "response": "The total cost for SPC Rivera's TDY to Fort Moore will be $1,222.00...",
   "tool_calls": [
-    { "tool": "search_regulations",    "label": "Searching regulations [travel]: \"per diem\"", "result_summary": "Found: jtr.pdf | Section 020309 (score 0.87)" },
-    { "tool": "get_per_diem",          "label": "Getting per diem rates for Columbus, GA",      "result_summary": "Columbus, GA: Lodging $104/night | M&IE $64/day" },
-    { "tool": "calculate_travel_cost", "label": "Calculating travel cost: Columbus (5 days, POV)", "result_summary": "Total: $2,155.80" }
+    {
+      "tool": "calculate_travel_cost",
+      "label": "Calculating travel cost: Fort Moore (5 days, POV)",
+      "result_summary": "Lodging: $416.00 | Meals: $288.00 | Mileage: $518.00 | TOTAL: $1222.00"
+    }
   ],
   "form_output": null,
   "error": null
 }
 ```
 
-`form_output` is non-null when a form was filled:
+`tool` values: `"search_regulations"` | `"get_per_diem"` | `"calculate_travel_cost"` | `"fill_form"`
+
+`form_output` when a form was filled — **pdf_path is never null now** (reportlab ensures a PDF is always generated):
 ```json
 {
-  "form_name": "DD_1610",
-  "filled_fields": { "from": "Rivera, Maria J.", "rank": "SPC", "destination": "Fort Moore" },
-  "missing_fields": ["travel_purpose"],
-  "pdf_path": "/api/forms/DD_1610_20260425_195632.pdf",
-  "summary": "FORM: DD_1610\nFROM: Rivera, Maria J.\n..."
+  "form_name": "DA_31",
+  "filled_fields": {
+    "Name (Last, First, MI)": "Rivera, Maria J.",
+    "Rank": "SPC",
+    "Organization/Unit": "1-503 INF, 82nd ABN",
+    "Type of Leave": "Annual Leave",
+    "Date Leave Begins": "03 JUN 2026",
+    "Number of Days": "10"
+  },
+  "missing_fields": ["Date Leave Ends", "Contact Phone", "Approving Official"],
+  "pdf_path": "/api/forms/DA_31_20260425_222438.pdf",
+  "summary": "==================================================\nFORM: DA_31\n..."
 }
 ```
-`pdf_path` is `null` when only a text summary was produced (no PDF template available).
+
+---
+
+### POST `/api/chat/stream`
+Same as `/api/chat` but streams via Server-Sent Events. Use for real-time "watching it think" UX.
+
+**Response:** `text/event-stream`
+```
+data: {"type": "reasoning", "text": "⚙ Searching regulations [travel]: \"GTC mandatory\""}
+data: {"type": "reasoning", "text": "  → Found: jtr.pdf | 010204. Government Travel Charge Card"}
+data: {"type": "token",     "text": "Yes, the Government Travel Charge Card (GTCC) "}
+data: {"type": "token",     "text": "is mandatory for all TDY travel — JTR 010204."}
+data: {"type": "done"}
+```
+Frontend: `fetch` with `ReadableStream` decoder, or `EventSource`.
 
 ---
 
 ### GET `/api/health`
-Check backend + model status.
+Check backend + model status. Call on mount to populate sidebar status dots.
 
 **Response:**
 ```json
 {
   "status": "ok",
   "ollama": true,
-  "vector_store_chunks": 727,
+  "model": "qwen2.5:7b",
+  "vector_store_chunks": 2063,
+  "vector_store_ready": true,
   "gsa_cache_loaded": true,
-  "model": "qwen2.5:7b"
+  "offline_ready": true
 }
 ```
-
-Use this for the status indicators in the sidebar (Ollama Connected, Vector Store Loaded, etc.)
 
 ---
 
 ### GET `/api/forms/{filename}`
-Download a generated form PDF.
+Download a generated form PDF or TXT.
 
-**Example:** `GET /api/forms/DD_1610_20260425_195632.pdf`
-**Response:** PDF binary (Content-Type: application/pdf)
+**Example:** `GET /api/forms/DA_31_20260425_222438.pdf`
+**Response:** PDF binary (`Content-Type: application/pdf`)
+**Security:** path traversal and extension checks — only `.pdf` and `.txt` served.
 
 ---
 
 ### POST `/api/profile`
-Save soldier profile (persisted to local `profile.json`).
+Persist soldier profile to local `profile.json`. Also reloads the running agent's profile immediately.
 
-**Request:**
+**Request body — all fields optional, send only what changed:**
 ```json
 {
   "name_last_first": "Rivera, Maria J.",
   "rank": "SPC",
   "grade": "E-4",
   "ssn_last4": "1234",
-  "unit": "1-503 INF, 82nd ABN",
-  "installation": "Fort Liberty"
+  "dod_id": "1234567890",
+  "unit": "1-503 INF, 82nd ABN DIV",
+  "installation": "Fort Liberty",
+  "uic": "W4XXXX",
+  "supervisor_name": "SGT Johnson",
+  "supervisor_title": "Squad Leader"
 }
 ```
 **Response:** `{"status": "saved"}`
@@ -95,57 +125,63 @@ Save soldier profile (persisted to local `profile.json`).
 ---
 
 ### GET `/api/profile`
-Load current soldier profile.
+Load current saved profile. Call on mount to hydrate profile form.
 
-**Response:** Same shape as POST body, or `{}` if not set.
-
----
-
-## Streaming (Phase 2 — add after basic flow works)
-
-`POST /api/chat/stream` — same request body, response is `text/event-stream`:
-```
-data: {"type": "reasoning", "text": "⚙ Searching regulations [travel]..."}
-data: {"type": "reasoning", "text": "  → Found: jtr.pdf | Section 010204"}
-data: {"type": "token",     "text": "Based on JTR "}
-data: {"type": "token",     "text": "Section 020309, "}
-data: {"type": "done",      "tools_used": ["search_regulations"], "form_output": null}
-```
-
-Frontend: use `EventSource` or `fetch` with `ReadableStream` to render tokens as they arrive.
+**Response:** Same shape as POST body, or `{}` if no profile saved yet.
 
 ---
 
-## Integration Status (as of 2026-04-25)
+### DELETE `/api/chat/history`
+Clear the agent's conversation memory. Call when user clicks "New Conversation".
 
-### Backend — DONE ✅
-- [x] `POST /api/chat` — ReAct agent, returns structured `tool_calls`
+**Response:** `{"status": "cleared"}`
+
+---
+
+## Integration Status — as of 2026-04-25 evening
+
+### Backend ✅ ALL DONE
+- [x] `POST /api/chat` — ReAct agent, structured `tool_calls` + `form_output`
+- [x] `POST /api/chat/stream` — SSE streaming endpoint live
 - [x] `GET /api/health` — real Ollama + ChromaDB + GSA status
-- [x] `GET /api/forms/{filename}` — serves generated PDFs safely
-- [x] `POST /api/profile` / `GET /api/profile` — persists soldier profile
+- [x] `GET /api/forms/{filename}` — PDF download with path traversal protection
+- [x] `POST /api/profile` + `GET /api/profile` — persists to `profile.json`
 - [x] `DELETE /api/chat/history` — clears conversation
-- [x] Response shape matches frontend `ToolTrace` / `FormOutput` types exactly
-- [x] Accepts optional `profile` in request (no more 422 errors)
+- [x] Response shape matches frontend `ToolCallItem` / `FormOutput` types exactly
+- [x] `profile` field accepted in chat request (no 422 errors)
+- [x] **PDF always generated** — reportlab fallback for all forms (DA_31, DA_4856, DA_4187)
+- [x] **DD_1610 AcroForm filling** — uses actual PDF field names (`name`, `ssn`, `org_elem`, `pds`, `proc_date`, etc.) + reportlab summary PDF
 - [x] 2063 regulation chunks in ChromaDB (JTR, AR 600-8-10, AFI 36-3003, MILPERSMAN 1050, AR 623-3, AFI 36-2406, BUPERSINST 1610, DoD FMR Vol 7A, MCO 1610.7)
+- [x] 40 installation distance pairs (Fort Liberty↔Moore, Alaska, Hawaii, Texas, DC area, West Coast)
+- [x] `search_regulations` always called for policy/reg questions — no hallucinated answers
 
-### Frontend — DONE ✅
-- [x] Chat UI sends `POST /api/chat`
+### Frontend ✅ DONE (team shipped new App.tsx)
+- [x] Chat UI with tab system (travel / leave / regulation / eval)
 - [x] `tool_calls` traces rendered above response
-- [x] Status states: thinking / tool_call / done / error
-- [x] Example queries
-- [x] Sidebar health dots wired to `GET /api/health` on load
+- [x] Status states: thinking / searching / calculating / done / error
+- [x] Example queries per tab
+- [x] Health status dots wired to `GET /api/health` on mount
+- [x] `SoldierProfile` type matches backend `ProfileModel` exactly
+- [x] `FormOutput.pdf_path` used for download button
+- [x] `ToolCallItem` type matches backend response exactly
 
-### Frontend — STILL NEEDED ❌
-- [ ] Profile "Save" button should `POST /api/profile` (currently only updates local state)
-- [ ] Profile load: `GET /api/profile` on mount to hydrate from backend
-- [ ] PDF download button: use `form_output.pdf_path` (not `form_output.pdf_path && ...` — check for null)
-- [ ] "Clear conversation" button → `DELETE /api/chat/history`
-- [ ] Handle `error` field in response (show error state when `data.error !== null`)
+### Remaining ❌ (frontend wiring — check with team)
+- [ ] Profile "Save" button → `POST /api/profile` (verify it persists to backend, not just local state)
+- [ ] Profile mount → `GET /api/profile` to load saved profile on page load
+- [ ] "New conversation" / clear button → `DELETE /api/chat/history`
+- [ ] `error` field handling: show error state when `data.error !== null`
 
-### Backend — STILL NEEDED ❌
-- [ ] Form PDF templates — `data/forms/dd1610.pdf`, `data/forms/da31.pdf` must exist for PDF generation (currently falls back to text if missing)
-- [ ] AR 623-3 PDF in `data/army_regs/` — eval domain has no chunks if this file is missing
-- [ ] Streaming endpoint (Phase 2 — nice-to-have for demo wow factor)
+---
+
+## Demo Scenarios — verified working
+
+| Scenario | Tools called | Output |
+|----------|-------------|--------|
+| "SPC Rivera TDY to Fort Moore, 5 days, POV from Fort Liberty" | `calculate_travel_cost` | $1,222 breakdown (lodging $416 + meals $288 + mileage $518) |
+| "10 days annual leave starting June 3" | `fill_form DA_31` | PDF download, 8 fields auto-filled from profile |
+| "Is the GTC mandatory for TDY?" | `search_regulations [travel]` | Answer from JTR 010204, no hallucination |
+| "What does JTR say about POV mileage?" | `search_regulations [travel]` | Exact JTR text with section citation |
+| "Fill a DD 1610 for Fort Moore trip" | `fill_form DD_1610` | 52KB real AcroForm PDF + formatted summary |
 
 ---
 
@@ -153,14 +189,13 @@ Frontend: use `EventSource` or `fetch` with `ReadableStream` to render tokens as
 
 All errors return:
 ```json
-{"response": null, "error": "description of what went wrong", "tools_used": []}
+{"response": "...", "tool_calls": [], "form_output": null, "error": "description"}
 ```
-
 Frontend should show error state when `error !== null`.
 
 ---
 
 ## CORS
 
-Backend sets `Access-Control-Allow-Origin: http://localhost:5173` (Vite default port).
+Backend allows: `http://localhost:5173`, `http://localhost:3000`, `http://127.0.0.1:5173`, `http://127.0.0.1:3000`
 No auth required — local only.
