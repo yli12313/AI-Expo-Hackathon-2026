@@ -1,20 +1,20 @@
 @import "tailwindcss";
 
 @theme {
-  /* Camo earth backgrounds (unchanged) */
+  /* Camo earth backgrounds */
   --color-slate-900: #0e0f0b;
   --color-slate-800: #181a14;
   --color-slate-700: #23271c;
   --color-slate-600: #353b28;
 
-  /* Olive structure (unchanged) */
+  /* Olive structure */
   --color-olive-900: #1a1f16;
   --color-olive-800: #252b1f;
   --color-olive-700: #333d29;
   --color-olive-600: #445233;
   --color-olive-500: #5a6e3f;
 
-  /* Logo navy — replaces amber as primary accent */
+  /* Logo navy — primary accent */
   --color-navy-900: #0d0f1a;
   --color-navy-800: #141829;
   --color-navy-700: #1e2540;
@@ -24,8 +24,9 @@
   --color-navy-300: #7b8fc8;
   --color-navy-200: #b0bde0;
   --color-navy-100: #dde3f2;
+  --color-navy-50:  #f0f3fa;
 
-  /* Logo crimson — replaces amber highlights */
+  /* Logo crimson — secondary accent */
   --color-crimson-700: #5c0e18;
   --color-crimson-600: #7c1321;
   --color-crimson-500: #9e1a2c;
@@ -33,8 +34,9 @@
   --color-crimson-300: #d44057;
   --color-crimson-200: #e8899a;
   --color-crimson-100: #f5cdd4;
+  --color-crimson-50:  #fdf0f2;
 
-  /* Keep functional colors */
+  /* Functional */
   --color-green-400: #4ade80;
   --color-red-400:   #f87171;
   --color-blue-400:  #60a5fa;
@@ -49,13 +51,13 @@
 body {
   background-color: var(--color-slate-900);
   background-image:
-    radial-gradient(ellipse 80px 60px at 12% 18%, rgba(74, 83, 48, 0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 120px 80px at 55% 8%, rgba(53, 59, 40, 0.22) 0%, transparent 70%),
-    radial-gradient(ellipse 60px 90px at 88% 25%, rgba(90, 110, 63, 0.12) 0%, transparent 70%),
-    radial-gradient(ellipse 100px 50px at 30% 55%, rgba(42, 48, 32, 0.20) 0%, transparent 70%),
-    radial-gradient(ellipse 70px 100px at 75% 70%, rgba(74, 83, 48, 0.15) 0%, transparent 70%),
-    radial-gradient(ellipse 90px 55px at 5% 85%, rgba(53, 59, 40, 0.18) 0%, transparent 70%),
-    radial-gradient(ellipse 55px 75px at 92% 90%, rgba(35, 39, 28, 0.25) 0%, transparent 70%);
+    radial-gradient(ellipse 80px 60px at 12% 18%, rgba(74,83,48,0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 120px 80px at 55% 8%, rgba(53,59,40,0.22) 0%, transparent 70%),
+    radial-gradient(ellipse 60px 90px at 88% 25%, rgba(90,110,63,0.12) 0%, transparent 70%),
+    radial-gradient(ellipse 100px 50px at 30% 55%, rgba(42,48,32,0.20) 0%, transparent 70%),
+    radial-gradient(ellipse 70px 100px at 75% 70%, rgba(74,83,48,0.15) 0%, transparent 70%),
+    radial-gradient(ellipse 90px 55px at 5% 85%, rgba(53,59,40,0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 55px 75px at 92% 90%, rgba(35,39,28,0.25) 0%, transparent 70%);
   color: #e4e4e7;
   font-family: "Inter", system-ui, -apple-system, sans-serif;
 }
@@ -66,7 +68,7 @@ body {
 
 @keyframes pulse-brand {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50%       { opacity: 0.5; }
 }
 .animate-pulse-amber { animation: pulse-brand 2s ease-in-out infinite; }
 
