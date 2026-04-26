@@ -5,28 +5,38 @@ type Status = "idle" | "thinking" | "searching" | "calculating" | "done" | "erro
 
 interface FormOutput {
   form_name: string;
-  pdf_available: boolean;
-  pdf_url: string;
-  txt_summary: string;
+  filled_fields: Record<string, string>;
+  missing_fields: string[];
+  pdf_path: string | null;
+  summary: string;
+}
+
+interface ToolCallItem {
+  tool: string;
+  label: string;
+  result_summary: string;
 }
 
 interface Message {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: Date;
-  tools_used?: string[];
-  reasoning_steps?: string[];
+  tool_calls?: ToolCallItem[];
   form_output?: FormOutput | null;
 }
 
-// Matches POST /api/profile spec exactly
+// Matches POST /api/profile + ProfileModel in backend exactly
 interface SoldierProfile {
   name_last_first: string;
   rank: string;
   grade: string;
   ssn_last4: string;
+  dod_id: string;
   unit: string;
   installation: string;
+  uic: string;
+  supervisor_name: string;
+  supervisor_title: string;
 }
 
 // Health response shape
@@ -65,8 +75,12 @@ const DEFAULT_PROFILE: SoldierProfile = {
   rank: "SPC",
   grade: "E-4",
   ssn_last4: "",
+  dod_id: "",
   unit: "1-503 INF, 82nd ABN",
   installation: "Fort Liberty",
+  uic: "",
+  supervisor_name: "",
+  supervisor_title: "",
 };
 
 const TAB_CONFIG: Record<Tab, { label: string; icon: string; description: string }> = {
@@ -182,28 +196,29 @@ function MessageBubble({ msg }: { msg: Message }) {
         {!isUser && (
           <>
             {/* Tool badges */}
-            {msg.tools_used && msg.tools_used.length > 0 && (
+            {msg.tool_calls && msg.tool_calls.length > 0 && (
               <div className="flex gap-1.5 mb-2 flex-wrap">
-                {msg.tools_used.map((t) => (
-                  <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-crimson-700/20 text-crimson-300 font-mono border border-crimson-700/30">
-                    {t}
+                {msg.tool_calls.map((tc) => (
+                  <span key={tc.tool} className="text-[10px] px-1.5 py-0.5 rounded bg-crimson-700/20 text-crimson-300 font-mono border border-crimson-700/30">
+                    {tc.tool}
                   </span>
                 ))}
               </div>
             )}
-            {/* Reasoning steps — collapsible */}
-            {msg.reasoning_steps && msg.reasoning_steps.length > 0 && (
-              <ReasoningSteps steps={msg.reasoning_steps} />
+            {/* Reasoning steps from tool_calls — collapsible */}
+            {msg.tool_calls && msg.tool_calls.length > 0 && (
+              <ReasoningSteps steps={msg.tool_calls.map(tc => `⚙ ${tc.label}
+  → ${tc.result_summary}`)} />
             )}
           </>
         )}
 
         <div className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</div>
 
-        {/* PDF download — reads form_output per spec */}
-        {!isUser && msg.form_output?.pdf_available && msg.form_output.pdf_url && (
+        {/* PDF download — reads pdf_path from backend form_output */}
+        {!isUser && msg.form_output?.pdf_path && (
           <a
-            href={msg.form_output.pdf_url}
+            href={msg.form_output.pdf_path}
             download
             className="mt-3 flex items-center gap-2 px-3 py-2 rounded-md bg-crimson-700/20 border border-crimson-600/40 text-crimson-300 text-xs font-medium hover:bg-crimson-700/30 hover:border-crimson-500/50 transition-all w-fit group"
           >
@@ -212,6 +227,12 @@ function MessageBubble({ msg }: { msg: Message }) {
             </svg>
             Download {msg.form_output.form_name} (PDF)
           </a>
+        )}
+        {/* Missing fields warning */}
+        {!isUser && msg.form_output?.missing_fields && msg.form_output.missing_fields.length > 0 && (
+          <div className="mt-2 text-[10px] text-crimson-300/80 font-mono">
+            ⚠ Missing: {msg.form_output.missing_fields.join(", ")}
+          </div>
         )}
 
         <div className={`text-[10px] mt-1.5 ${isUser ? "text-navy-400" : "text-zinc-500"}`}>
@@ -350,6 +371,30 @@ function ProfileModal({
               ))}
             </select>
           </div>
+
+          {/* DOD ID + UIC row */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">DOD ID</label>
+              <input type="text" value={draft.dod_id} onChange={(e) => setDraft((d) => ({ ...d, dod_id: e.target.value }))} placeholder="Optional" className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">UIC</label>
+              <input type="text" value={draft.uic} onChange={(e) => setDraft((d) => ({ ...d, uic: e.target.value }))} placeholder="Optional" className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all" />
+            </div>
+          </div>
+
+          {/* Supervisor */}
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Supervisor Name</label>
+              <input type="text" value={draft.supervisor_name} onChange={(e) => setDraft((d) => ({ ...d, supervisor_name: e.target.value }))} placeholder="Optional" className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all" />
+            </div>
+            <div className="flex-1">
+              <label className="block text-[10px] uppercase tracking-widest text-zinc-500 font-semibold mb-1.5">Supervisor Title</label>
+              <input type="text" value={draft.supervisor_title} onChange={(e) => setDraft((d) => ({ ...d, supervisor_title: e.target.value }))} placeholder="Optional" className="w-full rounded-md bg-slate-900 border border-slate-600 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-navy-500 focus:ring-1 focus:ring-navy-500/40 transition-all" />
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-slate-700">
@@ -454,7 +499,7 @@ export default function App() {
         setStatus("error");
         setMessages((prev) => [
           ...prev,
-          { role: "assistant", content: `Error: ${data.error}`, timestamp: new Date(), tools_used: [] },
+          { role: "assistant", content: `Error: ${data.error}`, timestamp: new Date() },
         ]);
         return;
       }
@@ -466,8 +511,7 @@ export default function App() {
           role: "assistant",
           content: data.response || "No response received.",
           timestamp: new Date(),
-          tools_used: data.tools_used || [],
-          reasoning_steps: data.reasoning_steps || [],
+          tool_calls: data.tool_calls || [],
           form_output: data.form_output ?? null,
         },
       ]);
