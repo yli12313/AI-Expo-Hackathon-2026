@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent } from "react";
 
-// ─── Types (match FRONTEND_API_SPEC.md) ──────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Tab = "travel" | "leave" | "regulation" | "eval";
 type AgentStatus = "idle" | "thinking" | "streaming" | "done" | "error";
@@ -22,10 +22,13 @@ interface ChatResponse {
 
 interface HealthResponse {
   status: string;
-  ollama: boolean;
+  llm_provider?: string;
+  llm_ready?: boolean;
+  ollama?: boolean;
   vector_store_chunks: number;
   gsa_cache_loaded: boolean;
   model: string;
+  offline_ready?: boolean;
 }
 
 interface Message {
@@ -47,13 +50,17 @@ interface SoldierProfile {
   installation: string;
 }
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: "travel", label: "TDY Travel" },
-  { key: "leave", label: "Leave / HR" },
-  { key: "regulation", label: "Regulations" },
-  { key: "eval", label: "Evaluations" },
+const NAVY    = "#1e2540";
+const CRIMSON = "#b91c33";
+const OLIVE   = "#445233";
+
+const MODULES: { key: Tab; label: string; subtitle: string; icon: string }[] = [
+  { key: "travel",     label: "TDY Travel",  subtitle: "Per diem, DD 1610",  icon: "✈" },
+  { key: "leave",      label: "Leave / HR",  subtitle: "DA 31, actions",     icon: "📋" },
+  { key: "regulation", label: "Regulations", subtitle: "JTR, ARs, AFIs",     icon: "📖" },
+  { key: "eval",       label: "Evaluations", subtitle: "NCOERs, OERs",       icon: "⭐" },
 ];
 
 const STARTERS: Record<Tab, string[]> = {
@@ -83,28 +90,27 @@ const EMPTY_PROFILE: SoldierProfile = {
   name_last_first: "", rank: "", grade: "", ssn_last4: "", unit: "", installation: "",
 };
 
-// ─── App ─────────────────────────────────────────────────────────────────────
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("travel");
-  const [status, setStatus] = useState<AgentStatus>("idle");
+  const [tab, setTab]           = useState<Tab>("travel");
+  const [status, setStatus]     = useState<AgentStatus>("idle");
   const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
-  const [profile, setProfile] = useState<SoldierProfile>(EMPTY_PROFILE);
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [showReasoning, setShowReasoning] = useState<Record<string, boolean>>({});
+  const [input, setInput]       = useState("");
+  const [profile, setProfile]   = useState<SoldierProfile>(EMPTY_PROFILE);
+  const [health, setHealth]     = useState<HealthResponse | null>(null);
+  const [showReasoning, setShowReasoning]   = useState<Record<string, boolean>>({});
   const [editingProfile, setEditingProfile] = useState(false);
-  const [profileDraft, setProfileDraft] = useState<SoldierProfile>(EMPTY_PROFILE);
+  const [profileDraft, setProfileDraft]     = useState<SoldierProfile>(EMPTY_PROFILE);
 
-  const endRef = useRef<HTMLDivElement>(null);
+  const endRef   = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const busy = status === "thinking" || status === "streaming";
 
-  // Load health + profile on mount
   useEffect(() => {
     fetch("/api/health").then(r => r.json()).then(setHealth).catch(() => {});
     fetch("/api/profile").then(r => r.json()).then((p) => {
-      if (p && p.name_last_first) { setProfile(p); setProfileDraft(p); }
+      if (p?.name_last_first) { setProfile(p); setProfileDraft(p); }
     }).catch(() => {});
   }, []);
 
@@ -117,18 +123,28 @@ export default function App() {
   async function saveProfile() {
     setProfile(profileDraft);
     setEditingProfile(false);
-    try { await fetch("/api/profile", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(profileDraft) }); } catch {}
+    try {
+      await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profileDraft),
+      });
+    } catch {}
+  }
+
+  async function clearHistory() {
+    try { await fetch("/api/chat/history", { method: "DELETE" }); } catch {}
+    setMessages([]);
+    setStatus("idle");
   }
 
   async function send(e: FormEvent) {
     e.preventDefault();
     const text = input.trim();
     if (!text || busy) return;
-
     setMessages(p => [...p, { id: crypto.randomUUID(), role: "user", content: text, timestamp: new Date() }]);
     setInput("");
     setStatus("thinking");
-
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -137,232 +153,274 @@ export default function App() {
       });
       if (!res.ok) throw new Error(`${res.status}`);
       const data: ChatResponse = await res.json();
-
       if (data.error) {
         setMessages(p => [...p, { id: crypto.randomUUID(), role: "assistant", content: `Error: ${data.error}`, timestamp: new Date() }]);
         setStatus("error");
       } else {
+        const msgId = crypto.randomUUID();
         setMessages(p => [...p, {
-          id: crypto.randomUUID(), role: "assistant", content: data.response || "—", timestamp: new Date(),
+          id: msgId, role: "assistant", content: data.response || "—", timestamp: new Date(),
           tools_used: data.tools_used, reasoning_steps: data.reasoning_steps, form_output: data.form_output ?? undefined,
         }]);
+        // Auto-expand reasoning if present
+        if (data.reasoning_steps && data.reasoning_steps.length > 0) {
+          setShowReasoning(prev => ({ ...prev, [msgId]: true }));
+        }
         setStatus("done");
       }
       setTimeout(() => setStatus("idle"), 1500);
     } catch {
       setMessages(p => [...p, {
         id: crypto.randomUUID(), role: "assistant", timestamp: new Date(),
-        content: "Backend not reachable. Run:\n  python -m uvicorn server:app --port 8000",
+        content: "Backend not reachable. Run:\n  python -m uvicorn app:app --port 8000",
       }]);
       setStatus("error");
       setTimeout(() => setStatus("idle"), 3000);
     }
   }
 
-  function onKey(e: KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(e); }
+  function onKey(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(e as unknown as FormEvent); }
   }
 
-  const hasProfile = !!profile.name_last_first;
+  const hasProfile   = !!profile.name_last_first;
+  const currentMod   = MODULES.find(m => m.key === tab)!;
+  const userMessages = messages.filter(m => m.role === "user");
+  const llmReady     = health ? (health.llm_ready ?? health.ollama ?? false) : null;
+  const llmDown      = llmReady === false;
+
+  // Status pill
+  const pillBg    = llmDown || status === "error" ? "#fee2e2" : busy ? "#fef3c7" : "#dcfce7";
+  const pillText  = llmDown || status === "error" ? "#b91c1c" : busy ? "#92400e" : "#166534";
+  const pillBorder= llmDown || status === "error" ? "#fca5a5" : busy ? "#fde68a" : "#86efac";
+  const pillLabel = llmDown ? "LLM Offline" : status === "error" ? "Error" :
+                    status === "thinking" ? "Reasoning…" : status === "streaming" ? "Responding…" :
+                    status === "done" ? "Complete" : "Ready";
+  const dotColor  = llmDown || status === "error" ? "#ef4444" : busy ? "#f59e0b" : "#22c55e";
+  const dotAnim   = busy ? "pulse 1.5s infinite" : "none";
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900 text-zinc-300">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700 shrink-0">
-        <div className="flex items-center gap-2.5">
-          <span className="text-amber-400 font-bold text-sm font-mono bg-olive-700 px-2 py-0.5 border border-olive-600/50">DL</span>
-          <span className="text-xs font-semibold text-zinc-200 tracking-wider">DUTY LINE</span>
-          <span className="text-[10px] text-zinc-600 font-mono">v0.1</span>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "#f8fafc", color: "#1e293b" }}>
+
+      {/* ── Header ── */}
+      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 24px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <img src="/logo-cropped.png" alt="Duty Line" style={{ height: 44, width: "auto", objectFit: "contain" }} />
+          <div style={{ width: 1, height: 36, background: "#e2e8f0" }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.12em", textTransform: "uppercase" }}>AI Military Assistant</span>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-0.5">
-          {TABS.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-3 py-1 text-[11px] font-mono transition-colors ${
-                tab === t.key ? "bg-olive-700 text-amber-400 border border-olive-600/50" : "text-zinc-500 hover:text-zinc-300 border border-transparent"
-              }`}
-            >{t.label}</button>
-          ))}
+        {/* Status pill */}
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 999, border: `1px solid ${pillBorder}`, background: pillBg, color: pillText, fontSize: 12, fontWeight: 600 }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: dotColor, animation: dotAnim, display: "inline-block" }} />
+          {pillLabel}
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className={`w-2 h-2 rounded-full ${status === "idle" || status === "done" ? "bg-zinc-600" : status === "error" ? "bg-red-400" : "bg-amber-400 animate-pulse"}`} />
-          <span className="text-[10px] font-mono text-zinc-500">
-            {status === "idle" ? "READY" : status === "thinking" ? "REASONING" : status === "streaming" ? "RESPONDING" : status === "done" ? "DONE" : "ERROR"}
-          </span>
-          {hasProfile && (
+        {/* Soldier info */}
+        <div style={{ textAlign: "right" }}>
+          {hasProfile ? (
             <>
-              <span className="text-zinc-700">|</span>
-              <span className="text-[11px] font-mono text-zinc-400">{profile.rank} {profile.name_last_first}</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                <span style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{profile.rank} {profile.name_last_first}</span>
+                <button onClick={() => { setProfileDraft(profile); setEditingProfile(true); }} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 0 }}>✏</button>
+              </div>
+              <div style={{ fontSize: 12, color: "#94a3b8" }}>{profile.unit} · {profile.installation}</div>
             </>
+          ) : (
+            <button onClick={() => setEditingProfile(true)} style={{ background: "none", border: "none", cursor: "pointer", color: CRIMSON, fontSize: 12, fontWeight: 500 }}>
+              Set up soldier profile →
+            </button>
           )}
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-52 bg-slate-800/30 border-r border-slate-700 flex flex-col shrink-0 text-[11px] font-mono">
-          <div className="p-3 space-y-4 flex-1 overflow-y-auto">
-            {/* Profile */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-zinc-500 text-[10px] tracking-wider">PROFILE</span>
-                <button onClick={() => { setProfileDraft(profile); setEditingProfile(!editingProfile); }} className="text-zinc-600 hover:text-zinc-400 text-[10px]">
-                  {editingProfile ? "[CANCEL]" : "[EDIT]"}
-                </button>
-              </div>
-              {editingProfile ? (
-                <div className="space-y-1">
-                  {(Object.keys(EMPTY_PROFILE) as (keyof SoldierProfile)[]).map(f => (
-                    <input
-                      key={f}
-                      placeholder={f.replace(/_/g, " ")}
-                      className="w-full bg-slate-800 border border-slate-700 px-2 py-1 text-[11px] text-zinc-300 focus:border-olive-600 focus:outline-none"
-                      value={profileDraft[f]}
-                      onChange={e => setProfileDraft({ ...profileDraft, [f]: e.target.value })}
-                    />
-                  ))}
-                  <button onClick={saveProfile} className="w-full py-1 bg-olive-700 text-amber-400 text-[10px] border border-olive-600/50 mt-1">SAVE</button>
-                </div>
-              ) : hasProfile ? (
-                <div className="text-zinc-500 space-y-0.5">
-                  <div className="text-zinc-400">{profile.rank} {profile.name_last_first}</div>
-                  <div>{profile.grade} | {profile.unit}</div>
-                  <div>{profile.installation}</div>
-                </div>
-              ) : (
-                <div className="text-zinc-600">No profile set. <button onClick={() => setEditingProfile(true)} className="text-amber-400/60 hover:text-amber-400">[SET UP]</button></div>
-              )}
+      {/* ── Profile modal ── */}
+      {editingProfile && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 20px 60px rgba(0,0,0,0.15)", width: 320, padding: 24 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <span style={{ fontWeight: 600, fontSize: 15 }}>Soldier Profile</span>
+              <button onClick={() => setEditingProfile(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 18, lineHeight: 1 }}>✕</button>
+            </div>
+            {(Object.keys(EMPTY_PROFILE) as (keyof SoldierProfile)[]).map(f => (
+              <input key={f} placeholder={f.replace(/_/g, " ")}
+                style={{ display: "block", width: "100%", marginBottom: 8, border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 12px", fontSize: 13, color: "#1e293b", outline: "none" }}
+                value={profileDraft[f]}
+                onChange={e => setProfileDraft({ ...profileDraft, [f]: e.target.value })}
+              />
+            ))}
+            <button onClick={saveProfile} style={{ width: "100%", padding: "10px 0", background: OLIVE, color: "#fff", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer", marginTop: 4 }}>
+              Save Profile
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
+
+        {/* ── Sidebar ── */}
+        <aside style={{ width: 220, background: "#fff", borderRight: "1px solid #e2e8f0", display: "flex", flexDirection: "column", flexShrink: 0 }}>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+
+            {/* Modules */}
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 10 }}>Modules</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              {MODULES.map(m => {
+                const active = tab === m.key;
+                return (
+                  <button key={m.key} onClick={() => setTab(m.key)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", borderRadius: 8, border: "none", borderLeft: active ? `3px solid ${CRIMSON}` : "3px solid transparent", cursor: "pointer", background: active ? "#f0f4ff" : "transparent", color: active ? NAVY : "#475569", textAlign: "left", transition: "background 0.15s" }}
+                    onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "#f8fafc"; }}
+                    onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                  >
+                    <span style={{ fontSize: 16, lineHeight: 1, marginTop: 1, flexShrink: 0 }}>{m.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: active ? NAVY : "#1e293b", lineHeight: 1.2 }}>{m.label}</div>
+                      <div style={{ fontSize: 11, color: active ? "#64748b" : "#94a3b8", marginTop: 2 }}>{m.subtitle}</div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Tools */}
-            <div>
-              <span className="text-zinc-500 text-[10px] tracking-wider">TOOLS</span>
-              <div className="mt-1 space-y-0.5 text-zinc-600">
-                <div className="px-1">search_regulations</div>
-                <div className="px-1">get_per_diem</div>
-                <div className="px-1">calculate_travel_cost</div>
-                <div className="px-1">fill_form</div>
+            {/* Session history */}
+            {userMessages.length > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: "#94a3b8", letterSpacing: "0.1em", textTransform: "uppercase" }}>This Session</span>
+                  <button onClick={clearHistory} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 10, color: "#94a3b8" }}
+                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.color = CRIMSON}
+                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.color = "#94a3b8"}
+                  >Clear</button>
+                </div>
+                {userMessages.slice(-8).map(m => (
+                  <div key={m.id} title={m.content} style={{ fontSize: 11, color: "#64748b", padding: "4px 6px", borderRadius: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 2 }}>
+                    {m.content.length > 50 ? m.content.slice(0, 50) + "…" : m.content}
+                  </div>
+                ))}
               </div>
-            </div>
-
-            {/* Docs */}
-            <div>
-              <span className="text-zinc-500 text-[10px] tracking-wider">LOADED DOCS</span>
-              <div className="mt-1 space-y-0.5 text-zinc-600">
-                <div className="px-1">JTR.pdf</div>
-                <div className="px-1">ar_600_8_10.pdf</div>
-                <div className="px-1">gsa_cache.json</div>
-                <div className="px-1">DD_1610 / DA_31 / DA_4856</div>
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* System health — wired to /api/health */}
-          <div className="p-3 border-t border-slate-700 text-[10px] space-y-1">
-            <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${health?.ollama ? "bg-green-400" : "bg-red-400"}`} />
-              <span className="text-zinc-500">{health?.model || "qwen2.5:7b"}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${health && health.vector_store_chunks > 0 ? "bg-green-400" : "bg-red-400"}`} />
-              <span className="text-zinc-500">vectorstore {health ? `(${health.vector_store_chunks})` : ""}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${health?.gsa_cache_loaded ? "bg-green-400" : "bg-red-400"}`} />
-              <span className="text-zinc-500">GSA cache</span>
-            </div>
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span className="text-amber-400/60">OFFLINE</span>
-            </div>
+          {/* Health dots */}
+          <div style={{ padding: "12px 16px", borderTop: "1px solid #f1f5f9" }}>
+            {[
+              { label: health?.model || "claude-sonnet-4-6", ok: llmReady },
+              { label: `Vector Store (${health?.vector_store_chunks ?? "…"})`, ok: health ? (health.vector_store_chunks > 0) : null },
+              { label: "GSA Rates Cached", ok: health ? health.gsa_cache_loaded : null },
+              { label: health?.offline_ready ? "Offline Ready" : "Cloud Mode", ok: health ? true : null, color: health?.offline_ready ? "#22c55e" : "#f59e0b" },
+            ].map(({ label, ok, color }) => (
+              <div key={label} style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 6 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: ok === null ? "#cbd5e1" : ok ? (color || "#22c55e") : "#ef4444", display: "inline-block" }} />
+                <span style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+              </div>
+            ))}
           </div>
         </aside>
 
-        {/* Main content */}
-        <main className="flex-1 flex flex-col min-w-0">
-          <div className="flex-1 overflow-y-auto px-5 py-4">
+        {/* ── Main ── */}
+        <main style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "#f8fafc" }}>
+
+          {/* Tab bar */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "10px 20px", background: "#fff", borderBottom: "1px solid #e2e8f0", flexShrink: 0 }}>
+            {MODULES.map(m => {
+              const active = tab === m.key;
+              return (
+                <button key={m.key} onClick={() => setTab(m.key)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "7px 16px", fontSize: 13, fontWeight: active ? 600 : 500, border: "none", borderRadius: 6, background: active ? NAVY : "transparent", color: active ? "#fff" : "#64748b", cursor: "pointer", transition: "background 0.15s, color 0.15s" }}
+                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "#f1f5f9"; }}
+                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <span style={{ fontSize: 14 }}>{m.icon}</span>
+                  {m.label}
+                </button>
+              );
+            })}
+            {messages.length > 0 && (
+              <button onClick={clearHistory} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
+                ✕ Clear
+              </button>
+            )}
+          </div>
+
+          {/* Messages */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "24px", display: "flex", flexDirection: "column" }}>
             {messages.length === 0 ? (
-              <div className="h-full flex flex-col justify-center max-w-lg mx-auto">
-                <p className="text-zinc-500 text-sm mb-1">Duty Line — {TABS.find(t => t.key === tab)?.label}</p>
-                <p className="text-zinc-600 text-xs mb-4">Describe a task. The agent will search regulations, calculate costs, and fill forms.</p>
-                <div className="space-y-1">
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 560, margin: "0 auto", width: "100%" }}>
+                <div style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>{currentMod.icon} {currentMod.label}</div>
+                <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 24 }}>{currentMod.subtitle} — describe your task below</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {STARTERS[tab].map(s => (
-                    <button
-                      key={s}
-                      onClick={() => { setInput(s); inputRef.current?.focus(); }}
-                      className="w-full text-left px-3 py-2 text-[12px] text-zinc-500 border border-slate-700/50 hover:border-slate-600 hover:text-zinc-300 bg-transparent transition-colors"
+                    <button key={s} onClick={() => { setInput(s); inputRef.current?.focus(); }}
+                      style={{ textAlign: "left", padding: "12px 16px", fontSize: 13, color: "#475569", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, cursor: "pointer", boxShadow: "0 1px 3px rgba(0,0,0,0.04)", transition: "border-color 0.15s" }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = NAVY}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"}
                     >{s}</button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="space-y-4 max-w-2xl mx-auto">
+              <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 680, margin: "0 auto", width: "100%" }}>
                 {messages.map(msg => (
                   <div key={msg.id}>
                     {msg.role === "user" ? (
-                      <div className="flex justify-end">
-                        <div className="max-w-[75%] bg-olive-700/50 border border-olive-600/30 px-3 py-2 text-sm text-zinc-200">
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{ maxWidth: "76%", background: NAVY, color: "#fff", padding: "12px 16px", borderRadius: "18px 18px 4px 18px", fontSize: 14, lineHeight: 1.6 }}>
                           {msg.content}
-                          <div className="text-[10px] text-olive-500 mt-1 text-right">
-                            {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </div>
                         </div>
                       </div>
                     ) : (
-                      <div className="max-w-[90%] space-y-2">
-                        {/* Tools used */}
+                      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px 18px 18px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", overflow: "hidden" }}>
+
+                        {/* Tool pills */}
                         {msg.tools_used && msg.tools_used.length > 0 && (
-                          <div className="flex items-center gap-2 flex-wrap">
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "12px 16px 0" }}>
                             {msg.tools_used.map(t => (
-                              <span key={t} className="text-[10px] font-mono px-1.5 py-0.5 bg-slate-800 border border-slate-700 text-zinc-500">{t}</span>
+                              <span key={t} style={{ fontSize: 11, fontFamily: "monospace", padding: "2px 10px", borderRadius: 999, border: "1px solid #fecdd3", color: "#be123c", background: "#fff1f2" }}>{t}</span>
                             ))}
                           </div>
                         )}
 
-                        {/* Reasoning trace — collapsible */}
+                        {/* Reasoning trace */}
                         {msg.reasoning_steps && msg.reasoning_steps.length > 0 && (
-                          <div>
-                            <button
-                              onClick={() => toggleReasoning(msg.id)}
-                              className="text-[10px] font-mono text-zinc-600 hover:text-zinc-400 transition-colors"
-                            >
-                              {showReasoning[msg.id] ? "[-] hide reasoning" : `[+] show reasoning (${msg.reasoning_steps.length} steps)`}
+                          <div style={{ padding: "8px 16px 0" }}>
+                            <button onClick={() => toggleReasoning(msg.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
+                              <span>{showReasoning[msg.id] ? "▾" : "▸"}</span>
+                              {showReasoning[msg.id] ? "Hide" : "Show"} reasoning ({msg.reasoning_steps.length} steps)
                             </button>
                             {showReasoning[msg.id] && (
-                              <div className="mt-1 bg-slate-800/40 border border-slate-700/40 px-3 py-2 font-mono text-[11px] text-zinc-500 whitespace-pre-wrap leading-relaxed">
+                              <div style={{ marginTop: 6, background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 6, padding: "10px 14px", fontFamily: "monospace", fontSize: 11, color: "#64748b", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
                                 {msg.reasoning_steps.join("\n")}
                               </div>
                             )}
                           </div>
                         )}
 
-                        {/* Response text */}
-                        <div className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{msg.content}</div>
+                        {/* Response */}
+                        <div style={{ padding: "12px 16px", fontSize: 14, color: "#1e293b", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                          {msg.content}
+                        </div>
 
-                        {/* Form output with PDF download */}
+                        {/* Form download */}
                         {msg.form_output && (
-                          <div className="border border-slate-700 font-mono text-xs">
-                            <div className="bg-slate-800 px-3 py-1.5 border-b border-slate-700 flex justify-between items-center">
-                              <span className="text-zinc-400">FORM: {msg.form_output.form_name}</span>
+                          <div style={{ margin: "0 16px 12px", border: "1px solid #e2e8f0", borderRadius: 8, overflow: "hidden" }}>
+                            <div style={{ background: "#f8fafc", padding: "8px 14px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontFamily: "monospace", fontSize: 11, color: "#64748b" }}>FORM: {msg.form_output.form_name}</span>
                               {msg.form_output.pdf_available && msg.form_output.pdf_url && (
-                                <a
-                                  href={msg.form_output.pdf_url}
-                                  download
-                                  className="text-amber-400 hover:text-amber-300 text-[10px]"
-                                >[DOWNLOAD PDF]</a>
+                                <a href={msg.form_output.pdf_url} download style={{ fontSize: 12, fontWeight: 600, color: CRIMSON, textDecoration: "none", display: "flex", alignItems: "center", gap: 4 }}>
+                                  ↓ Download {msg.form_output.form_name} (PDF)
+                                </a>
                               )}
                             </div>
-                            <div className="px-3 py-2 text-zinc-500 whitespace-pre-wrap max-h-40 overflow-y-auto">
+                            <div style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 11, color: "#64748b", whiteSpace: "pre-wrap", maxHeight: 140, overflowY: "auto" }}>
                               {msg.form_output.txt_summary}
                             </div>
                           </div>
                         )}
 
-                        <div className="text-[10px] text-zinc-700">
+                        {/* Timestamp */}
+                        <div style={{ padding: "0 16px 10px", fontSize: 10, color: "#cbd5e1" }}>
                           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </div>
                       </div>
@@ -370,9 +428,17 @@ export default function App() {
                   </div>
                 ))}
 
+                {/* Typing indicator */}
                 {busy && (
-                  <div className="text-xs font-mono text-zinc-600">
-                    {status === "thinking" ? "> reasoning..." : "> streaming response..."}
+                  <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px 18px 18px 18px", padding: "14px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#94a3b8", fontSize: 13 }}>
+                      <span style={{ display: "inline-flex", gap: 4 }}>
+                        {[0, 150, 300].map(d => (
+                          <span key={d} style={{ width: 6, height: 6, borderRadius: "50%", background: "#94a3b8", display: "inline-block", animation: `bounce 1.2s ${d}ms infinite` }} />
+                        ))}
+                      </span>
+                      {status === "thinking" ? "Reasoning through your request…" : "Streaming response…"}
+                    </div>
                   </div>
                 )}
                 <div ref={endRef} />
@@ -381,30 +447,42 @@ export default function App() {
           </div>
 
           {/* Input */}
-          <div className="px-5 py-2.5 border-t border-slate-700/50 shrink-0">
-            <form onSubmit={send} className="max-w-2xl mx-auto flex gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
+          <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", background: "#fff", flexShrink: 0 }}>
+            <form onSubmit={send} style={{ maxWidth: 680, margin: "0 auto", display: "flex", gap: 10 }}>
+              <textarea ref={inputRef} value={input}
+                onChange={e => {
+                  setInput(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = Math.min(e.target.scrollHeight, 140) + "px";
+                }}
                 onKeyDown={onKey}
-                placeholder="Describe your task..."
-                rows={1}
-                disabled={busy}
-                className="flex-1 resize-none bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-olive-600 disabled:opacity-30"
+                placeholder={`Ask about ${currentMod.label.toLowerCase()}…`}
+                rows={1} disabled={busy}
+                style={{ flex: 1, resize: "none", border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 14px", fontSize: 14, color: "#1e293b", background: "#f8fafc", outline: "none", fontFamily: "inherit", opacity: busy ? 0.5 : 1, overflowY: "hidden", lineHeight: 1.5 }}
+                onFocus={e => (e.currentTarget as HTMLElement).style.borderColor = NAVY}
+                onBlur={e => (e.currentTarget as HTMLElement).style.borderColor = "#e2e8f0"}
               />
-              <button
-                type="submit"
-                disabled={!input.trim() || busy}
-                className="px-4 py-2 bg-olive-700 text-amber-400 text-sm font-mono border border-olive-600/50 hover:bg-olive-600 disabled:opacity-20 disabled:cursor-not-allowed"
-              >SEND</button>
+              <button type="submit" disabled={!input.trim() || busy}
+                style={{ padding: "10px 20px", background: (!input.trim() || busy) ? "#94a3b8" : NAVY, color: "#fff", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 600, cursor: (!input.trim() || busy) ? "not-allowed" : "pointer", flexShrink: 0, transition: "background 0.15s" }}
+              >Send</button>
             </form>
-            <p className="text-[10px] text-zinc-700 mt-1 text-center font-mono">
-              shift+enter newline | all data local | not legal advice
+            <p style={{ textAlign: "center", fontSize: 11, color: "#94a3b8", marginTop: 8, marginBottom: 0 }}>
+              AI may make mistakes — verify critical information before action
             </p>
           </div>
         </main>
       </div>
+
+      <style>{`
+        @keyframes bounce {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
+        }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
     </div>
   );
 }

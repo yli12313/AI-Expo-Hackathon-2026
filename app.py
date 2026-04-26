@@ -253,6 +253,32 @@ def _check_ollama() -> bool:
         return False
 
 
+def _check_cloud_llm(provider: str) -> bool:
+    """Validate cloud API key with a lightweight models-list call (no tokens burned)."""
+    try:
+        if provider == "claude":
+            r = requests.get(
+                "https://api.anthropic.com/v1/models",
+                headers={
+                    "x-api-key": LLM_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                },
+                timeout=5,
+            )
+            return r.status_code == 200
+        if provider == "openrouter":
+            r = requests.get(
+                "https://openrouter.ai/api/v1/models",
+                headers={"Authorization": f"Bearer {LLM_API_KEY}"},
+                timeout=5,
+            )
+            return r.status_code == 200
+        # Unknown cloud provider — check key is non-empty and not a placeholder
+        return bool(LLM_API_KEY and "your-key" not in LLM_API_KEY and len(LLM_API_KEY) > 10)
+    except Exception:
+        return False
+
+
 def _count_vector_chunks() -> int:
     try:
         import chromadb
@@ -286,7 +312,7 @@ async def health():
         llm_ready = ollama_ok
     else:
         ollama_ok = False
-        llm_ready = True
+        llm_ready = _check_cloud_llm(provider)
 
     offline_ready = provider == "ollama" and llm_ready and chunk_count > 0 and gsa_ok
 
