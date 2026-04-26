@@ -114,11 +114,11 @@ Everything except the LLM already runs locally — vector store, per diem cache,
 
 The agent connects to any OpenAI-compatible API through a single environment variable. No code changes, no redeployment — just swap the endpoint:
 
-| Provider | Cost (per 1M tokens) | Config |
-|----------|----------------------|--------|
-| **Claude API (default)** | ~$3–15 input / $15–75 output | `LLM_BASE_URL=https://api.anthropic.com/v1` |
-| OpenRouter (Llama 3.1 70B) | ~$0.40 input / $0.40 output | `LLM_BASE_URL=https://openrouter.ai/api/v1` |
-| Ollama (local) | $0 — runs on device | `LLM_BASE_URL=http://localhost:11434/v1` |
+| Provider | Config | Cost (per 1M tokens) |
+|----------|--------|----------------------|
+| **Claude API (default)** | `LLM_BASE_URL=https://api.anthropic.com/v1` | ~$3–15 input / $15–75 output |
+| OpenRouter (Llama 3.1 70B) | `LLM_BASE_URL=https://openrouter.ai/api/v1` | ~$0.40 input / $0.40 output |
+| Ollama (local) | `LLM_BASE_URL=http://localhost:11434/v1` | $0 — runs on device |
 
 This means Duty Line isn't locked into a single vendor. If a better model comes out tomorrow, or if procurement requires a specific provider, or if policy changes which APIs are authorized on a given network — the switch is one line in a config file. The rest of the system (retrieval, cost calculation, form generation) is completely independent of which LLM is behind the endpoint.
 
