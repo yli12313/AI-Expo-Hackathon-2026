@@ -5,49 +5,162 @@ import { useState, useRef, useEffect, useCallback, type FormEvent, type Keyboard
 type Tab = "travel" | "leave" | "regulation" | "eval";
 type AgentStatus = "idle" | "thinking" | "streaming" | "done" | "error";
 
+interface ToolCallItem {
+  tool:           string;
+  label:          string;
+  result_summary: string;
+}
+
 interface FormOutput {
-  form_name: string;
+  form_name:    string;
   pdf_available: boolean;
-  pdf_url: string | null;
-  txt_summary: string;
+  pdf_url:      string | null;
+  txt_summary:  string;
 }
 
 interface ChatResponse {
-  response: string | null;
-  tools_used: string[];
-  reasoning_steps: string[];
+  response:    string;
+  tool_calls:  ToolCallItem[];
   form_output: FormOutput | null;
-  error: string | null;
+  error:       string | null;
 }
 
 interface HealthResponse {
-  status: string;
-  llm_provider?: string;
-  llm_ready?: boolean;
-  ollama?: boolean;
-  vector_store_chunks: number;
-  gsa_cache_loaded: boolean;
-  model: string;
-  offline_ready?: boolean;
+  status:               string;
+  llm_provider?:        string;
+  llm_ready?:           boolean;
+  ollama?:              boolean;
+  vector_store_chunks:  number;
+  gsa_cache_loaded:     boolean;
+  model:                string;
+  offline_ready?:       boolean;
 }
 
 interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  timestamp: Date;
-  tools_used?: string[];
-  reasoning_steps?: string[];
+  id:          string;
+  role:        "user" | "assistant";
+  content:     string;
+  timestamp:   Date;
+  tool_calls?: ToolCallItem[];
   form_output?: FormOutput;
 }
 
+// ─── Markdown renderer ────────────────────────────────────────────────────────
+
+function renderMarkdown(text: string): React.ReactNode {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  const inlineFormat = (str: string): React.ReactNode => {
+    const parts = str.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
+    return parts.map((p, idx) => {
+      if (p.startsWith("**") && p.endsWith("**"))
+        return <strong key={idx}>{p.slice(2, -2)}</strong>;
+      if (p.startsWith("*") && p.endsWith("*"))
+        return <em key={idx}>{p.slice(1, -1)}</em>;
+      if (p.startsWith("`") && p.endsWith("`"))
+        return <code key={idx} style={{ background: "#f1f5f9", padding: "1px 5px", borderRadius: 3, fontSize: 12, fontFamily: "monospace" }}>{p.slice(1, -1)}</code>;
+      return p;
+    });
+  };
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Horizontal rule
+    if (/^---+$/.test(line.trim())) {
+      elements.push(<hr key={i} style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "10px 0" }} />);
+      i++; continue;
+    }
+
+    // Table — collect all | lines
+    if (line.trim().startsWith("|")) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      const rows = tableLines.filter(l => !/^\|[-:\s|]+\|$/.test(l.trim()));
+      const parseRow = (l: string) => l.split("|").filter((_, ci) => ci > 0 && ci < l.split("|").length - 1).map(c => c.trim());
+      if (rows.length > 0) {
+        const [header, ...body] = rows;
+        elements.push(
+          <table key={i} style={{ borderCollapse: "collapse", width: "100%", fontSize: 13, margin: "8px 0" }}>
+            <thead>
+              <tr>{parseRow(header).map((h, ci) => <th key={ci} style={{ textAlign: "left", padding: "6px 10px", background: "#f8fafc", borderBottom: "2px solid #e2e8f0", fontWeight: 600, color: "#374151" }}>{inlineFormat(h)}</th>)}</tr>
+            </thead>
+            <tbody>
+              {body.map((row, ri) => (
+                <tr key={ri} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                  {parseRow(row).map((cell, ci) => <td key={ci} style={{ padding: "6px 10px", color: "#4b5563" }}>{inlineFormat(cell)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        );
+      }
+      continue;
+    }
+
+    // Headings
+    const h2 = line.match(/^##\s+(.+)/);
+    const h3 = line.match(/^###\s+(.+)/);
+    if (h2) { elements.push(<h3 key={i} style={{ fontSize: 15, fontWeight: 700, margin: "12px 0 4px", color: "#1e293b" }}>{inlineFormat(h2[1])}</h3>); i++; continue; }
+    if (h3) { elements.push(<h4 key={i} style={{ fontSize: 13, fontWeight: 700, margin: "10px 0 4px", color: "#1e293b" }}>{inlineFormat(h3[1])}</h4>); i++; continue; }
+
+    // Blockquote
+    if (line.startsWith("> ")) {
+      elements.push(<blockquote key={i} style={{ borderLeft: "3px solid #e2e8f0", paddingLeft: 12, margin: "6px 0", color: "#6b7280", fontStyle: "italic" }}>{inlineFormat(line.slice(2))}</blockquote>);
+      i++; continue;
+    }
+
+    // Bullet list — collect consecutive bullets
+    if (/^[-•*]\s/.test(line) || /^\d+\.\s/.test(line)) {
+      const items: string[] = [];
+      while (i < lines.length && (/^[-•*]\s/.test(lines[i]) || /^\d+\.\s/.test(lines[i]))) {
+        items.push(lines[i].replace(/^[-•*]\s/, "").replace(/^\d+\.\s/, ""));
+        i++;
+      }
+      elements.push(
+        <ul key={i} style={{ margin: "4px 0", paddingLeft: 18, display: "flex", flexDirection: "column", gap: 2 }}>
+          {items.map((it, ii) => <li key={ii} style={{ fontSize: 14, color: "#374151" }}>{inlineFormat(it)}</li>)}
+        </ul>
+      );
+      continue;
+    }
+
+    // Warning line (⚠)
+    if (line.startsWith("⚠") || line.includes("⚠")) {
+      elements.push(<p key={i} style={{ margin: "6px 0", color: "#b91c1c", fontSize: 13 }}>{inlineFormat(line)}</p>);
+      i++; continue;
+    }
+
+    // Empty line → spacer
+    if (line.trim() === "") {
+      elements.push(<div key={i} style={{ height: 6 }} />);
+      i++; continue;
+    }
+
+    // Regular paragraph
+    elements.push(<p key={i} style={{ margin: "2px 0", fontSize: 14, color: "#1e293b", lineHeight: 1.7 }}>{inlineFormat(line)}</p>);
+    i++;
+  }
+
+  return <>{elements}</>;
+}
+
 interface SoldierProfile {
-  name_last_first: string;
-  rank: string;
-  grade: string;
-  ssn_last4: string;
-  unit: string;
-  installation: string;
+  name_last_first:  string;
+  rank:             string;
+  grade:            string;
+  ssn_last4:        string;
+  dod_id:           string;
+  unit:             string;
+  installation:     string;
+  uic:              string;
+  supervisor_name:  string;
+  supervisor_title: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -87,7 +200,9 @@ const STARTERS: Record<Tab, string[]> = {
 };
 
 const EMPTY_PROFILE: SoldierProfile = {
-  name_last_first: "", rank: "", grade: "", ssn_last4: "", unit: "", installation: "",
+  name_last_first: "", rank: "", grade: "", ssn_last4: "",
+  dod_id: "", unit: "", installation: "", uic: "",
+  supervisor_name: "", supervisor_title: "",
 };
 
 // ─── App ──────────────────────────────────────────────────────────────────────
@@ -95,7 +210,7 @@ const EMPTY_PROFILE: SoldierProfile = {
 export default function App() {
   const [tab, setTab]           = useState<Tab>("travel");
   const [status, setStatus]     = useState<AgentStatus>("idle");
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Record<Tab, Message[]>>({ travel: [], leave: [], regulation: [], eval: [] });
   const [input, setInput]       = useState("");
   const [profile, setProfile]   = useState<SoldierProfile>(EMPTY_PROFILE);
   const [health, setHealth]     = useState<HealthResponse | null>(null);
@@ -108,13 +223,17 @@ export default function App() {
   const busy = status === "thinking" || status === "streaming";
 
   useEffect(() => {
-    fetch("/api/health").then(r => r.json()).then(setHealth).catch(() => {});
+    const fetchHealth = () => fetch("/api/health").then(r => r.json()).then(setHealth).catch(() => {});
+    fetchHealth();
+    // Re-poll once after 4s to catch slow backend startup
+    const t = setTimeout(fetchHealth, 4000);
     fetch("/api/profile").then(r => r.json()).then((p) => {
       if (p?.name_last_first) { setProfile(p); setProfileDraft(p); }
     }).catch(() => {});
+    return () => clearTimeout(t);
   }, []);
 
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, tab]);
 
   const toggleReasoning = useCallback((id: string) => {
     setShowReasoning(prev => ({ ...prev, [id]: !prev[id] }));
@@ -134,7 +253,7 @@ export default function App() {
 
   async function clearHistory() {
     try { await fetch("/api/chat/history", { method: "DELETE" }); } catch {}
-    setMessages([]);
+    setMessages(p => ({ ...p, [tab]: [] }));
     setStatus("idle");
   }
 
@@ -142,7 +261,7 @@ export default function App() {
     e.preventDefault();
     const text = input.trim();
     if (!text || busy) return;
-    setMessages(p => [...p, { id: crypto.randomUUID(), role: "user", content: text, timestamp: new Date() }]);
+    setMessages(p => ({ ...p, [tab]: [...p[tab], { id: crypto.randomUUID(), role: "user", content: text, timestamp: new Date() }] }));
     setInput("");
     setStatus("thinking");
     try {
@@ -154,26 +273,26 @@ export default function App() {
       if (!res.ok) throw new Error(`${res.status}`);
       const data: ChatResponse = await res.json();
       if (data.error) {
-        setMessages(p => [...p, { id: crypto.randomUUID(), role: "assistant", content: `Error: ${data.error}`, timestamp: new Date() }]);
+        setMessages(p => ({ ...p, [tab]: [...p[tab], { id: crypto.randomUUID(), role: "assistant", content: `Error: ${data.error}`, timestamp: new Date() }] }));
         setStatus("error");
       } else {
         const msgId = crypto.randomUUID();
-        setMessages(p => [...p, {
+        setMessages(p => ({ ...p, [tab]: [...p[tab], {
           id: msgId, role: "assistant", content: data.response || "—", timestamp: new Date(),
-          tools_used: data.tools_used, reasoning_steps: data.reasoning_steps, form_output: data.form_output ?? undefined,
-        }]);
-        // Auto-expand reasoning if present
-        if (data.reasoning_steps && data.reasoning_steps.length > 0) {
+          tool_calls: data.tool_calls, form_output: data.form_output ?? undefined,
+        }] }));
+        // Auto-expand reasoning if tools were called
+        if (data.tool_calls && data.tool_calls.length > 0) {
           setShowReasoning(prev => ({ ...prev, [msgId]: true }));
         }
         setStatus("done");
       }
       setTimeout(() => setStatus("idle"), 1500);
     } catch {
-      setMessages(p => [...p, {
+      setMessages(p => ({ ...p, [tab]: [...p[tab], {
         id: crypto.randomUUID(), role: "assistant", timestamp: new Date(),
         content: "Backend not reachable. Run:\n  python -m uvicorn app:app --port 8000",
-      }]);
+      }] }));
       setStatus("error");
       setTimeout(() => setStatus("idle"), 3000);
     }
@@ -183,9 +302,10 @@ export default function App() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(e as unknown as FormEvent); }
   }
 
-  const hasProfile   = !!profile.name_last_first;
-  const currentMod   = MODULES.find(m => m.key === tab)!;
-  const userMessages = messages.filter(m => m.role === "user");
+  const hasProfile    = !!profile.name_last_first;
+  const currentMod    = MODULES.find(m => m.key === tab)!;
+  const tabMessages   = messages[tab];
+  const userMessages  = tabMessages.filter(m => m.role === "user");
   const llmReady     = health ? (health.llm_ready ?? health.ollama ?? false) : null;
   const llmDown      = llmReady === false;
 
@@ -244,8 +364,19 @@ export default function App() {
               <span style={{ fontWeight: 600, fontSize: 15 }}>Soldier Profile</span>
               <button onClick={() => setEditingProfile(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 18, lineHeight: 1 }}>✕</button>
             </div>
-            {(Object.keys(EMPTY_PROFILE) as (keyof SoldierProfile)[]).map(f => (
-              <input key={f} placeholder={f.replace(/_/g, " ")}
+            {([
+              ["name_last_first",  "Name (Last, First, MI)"],
+              ["rank",             "Rank (e.g. SPC, SSG)"],
+              ["grade",            "Grade (e.g. E-4)"],
+              ["ssn_last4",        "SSN Last 4 digits"],
+              ["dod_id",           "DoD ID (10 digits)"],
+              ["unit",             "Unit (e.g. 1-503 IN, 82nd ABN)"],
+              ["installation",     "Installation (e.g. Fort Liberty)"],
+              ["uic",              "UIC (e.g. W4XXXX)"],
+              ["supervisor_name",  "Supervisor Name"],
+              ["supervisor_title", "Supervisor Title (e.g. Squad Leader)"],
+            ] as [keyof SoldierProfile, string][]).map(([f, label]) => (
+              <input key={f} placeholder={label}
                 style={{ display: "block", width: "100%", marginBottom: 8, border: "1px solid #e2e8f0", borderRadius: 6, padding: "8px 12px", fontSize: 13, color: "#1e293b", outline: "none" }}
                 value={profileDraft[f]}
                 onChange={e => setProfileDraft({ ...profileDraft, [f]: e.target.value })}
@@ -307,7 +438,7 @@ export default function App() {
           {/* Health dots */}
           <div style={{ padding: "12px 16px", borderTop: "1px solid #f1f5f9" }}>
             {[
-              { label: health?.model || "claude-sonnet-4-6", ok: llmReady },
+              { label: health ? (health.llm_provider === "ollama" ? "Ollama (local)" : "AI Model") : "AI Model", ok: llmReady },
               { label: `Vector Store (${health?.vector_store_chunks ?? "…"})`, ok: health ? (health.vector_store_chunks > 0) : null },
               { label: "GSA Rates Cached", ok: health ? health.gsa_cache_loaded : null },
               { label: health?.offline_ready ? "Offline Ready" : "Cloud Mode", ok: health ? true : null, color: health?.offline_ready ? "#22c55e" : "#f59e0b" },
@@ -337,7 +468,7 @@ export default function App() {
                 </button>
               );
             })}
-            {messages.length > 0 && (
+            {tabMessages.length > 0 && (
               <button onClick={clearHistory} style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", fontSize: 12, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
                 ✕ Clear
               </button>
@@ -346,7 +477,7 @@ export default function App() {
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: "auto", padding: "24px", display: "flex", flexDirection: "column" }}>
-            {messages.length === 0 ? (
+            {tabMessages.length === 0 ? (
               <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", maxWidth: 560, margin: "0 auto", width: "100%" }}>
                 <div style={{ fontSize: 24, fontWeight: 700, color: "#1e293b", marginBottom: 4 }}>{currentMod.icon} {currentMod.label}</div>
                 <div style={{ fontSize: 13, color: "#94a3b8", marginBottom: 24 }}>{currentMod.subtitle} — describe your task below</div>
@@ -362,7 +493,7 @@ export default function App() {
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 680, margin: "0 auto", width: "100%" }}>
-                {messages.map(msg => (
+                {tabMessages.map(msg => (
                   <div key={msg.id}>
                     {msg.role === "user" ? (
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -374,32 +505,37 @@ export default function App() {
                       <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: "4px 18px 18px 18px", boxShadow: "0 1px 4px rgba(0,0,0,0.05)", overflow: "hidden" }}>
 
                         {/* Tool pills */}
-                        {msg.tools_used && msg.tools_used.length > 0 && (
+                        {msg.tool_calls && msg.tool_calls.length > 0 && (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "12px 16px 0" }}>
-                            {msg.tools_used.map(t => (
-                              <span key={t} style={{ fontSize: 11, fontFamily: "monospace", padding: "2px 10px", borderRadius: 999, border: "1px solid #fecdd3", color: "#be123c", background: "#fff1f2" }}>{t}</span>
+                            {msg.tool_calls.map(tc => (
+                              <span key={tc.tool} style={{ fontSize: 11, fontFamily: "monospace", padding: "2px 10px", borderRadius: 999, border: "1px solid #fecdd3", color: "#be123c", background: "#fff1f2" }}>{tc.tool}</span>
                             ))}
                           </div>
                         )}
 
                         {/* Reasoning trace */}
-                        {msg.reasoning_steps && msg.reasoning_steps.length > 0 && (
+                        {msg.tool_calls && msg.tool_calls.length > 0 && (
                           <div style={{ padding: "8px 16px 0" }}>
                             <button onClick={() => toggleReasoning(msg.id)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#94a3b8", display: "flex", alignItems: "center", gap: 4 }}>
                               <span>{showReasoning[msg.id] ? "▾" : "▸"}</span>
-                              {showReasoning[msg.id] ? "Hide" : "Show"} reasoning ({msg.reasoning_steps.length} steps)
+                              {showReasoning[msg.id] ? "Hide" : "Show"} reasoning ({msg.tool_calls.length} steps)
                             </button>
                             {showReasoning[msg.id] && (
-                              <div style={{ marginTop: 6, background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 6, padding: "10px 14px", fontFamily: "monospace", fontSize: 11, color: "#64748b", whiteSpace: "pre-wrap", lineHeight: 1.7 }}>
-                                {msg.reasoning_steps.join("\n")}
+                              <div style={{ marginTop: 6, background: "#f8fafc", border: "1px solid #f1f5f9", borderRadius: 6, padding: "10px 14px", fontFamily: "monospace", fontSize: 11, color: "#64748b", lineHeight: 1.8 }}>
+                                {msg.tool_calls.map((tc, idx) => (
+                                  <div key={idx}>
+                                    <div style={{ color: "#475569" }}>⊙ {tc.label}</div>
+                                    <div style={{ color: "#94a3b8", paddingLeft: 14 }}>→ {tc.result_summary}</div>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
                         )}
 
-                        {/* Response */}
-                        <div style={{ padding: "12px 16px", fontSize: 14, color: "#1e293b", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-                          {msg.content}
+                        {/* Response — rendered markdown */}
+                        <div style={{ padding: "12px 16px" }}>
+                          {renderMarkdown(msg.content)}
                         </div>
 
                         {/* Form download */}

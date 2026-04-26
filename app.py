@@ -42,6 +42,7 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.anthropic.com/v1")
 LLM_MODEL    = os.getenv("LLM_MODEL",    "claude-sonnet-4-6")
+LLM_API_KEY  = os.getenv("LLM_API_KEY",  "")
 
 # ---------------------------------------------------------------------------
 # App + CORS
@@ -254,29 +255,16 @@ def _check_ollama() -> bool:
 
 
 def _check_cloud_llm(provider: str) -> bool:
-    """Validate cloud API key with a lightweight models-list call (no tokens burned)."""
-    try:
-        if provider == "claude":
-            r = requests.get(
-                "https://api.anthropic.com/v1/models",
-                headers={
-                    "x-api-key": LLM_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                },
-                timeout=5,
-            )
-            return r.status_code == 200
-        if provider == "openrouter":
-            r = requests.get(
-                "https://openrouter.ai/api/v1/models",
-                headers={"Authorization": f"Bearer {LLM_API_KEY}"},
-                timeout=5,
-            )
-            return r.status_code == 200
-        # Unknown cloud provider — check key is non-empty and not a placeholder
-        return bool(LLM_API_KEY and "your-key" not in LLM_API_KEY and len(LLM_API_KEY) > 10)
-    except Exception:
+    """Validate cloud API key by format — fast, no network call, no tokens burned."""
+    key = LLM_API_KEY or ""
+    if not key or "your-key" in key or len(key) < 20:
         return False
+    if provider == "claude":
+        return key.startswith("sk-ant-")
+    if provider == "openrouter":
+        return key.startswith("sk-or-")
+    # Custom/unknown provider — key is present and not a placeholder
+    return True
 
 
 def _count_vector_chunks() -> int:
