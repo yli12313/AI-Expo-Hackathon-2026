@@ -186,7 +186,9 @@ pip install -r requirements.txt
 # 2. Pull the LLM (first time only)
 ollama pull qwen2.5:7b
 
-# 3. Ingest regulation PDFs into ChromaDB (first time only, ~2–3 min)
+# 3. Download regulation PDFs and build the vector store (first time only, ~5–10 min)
+#    ingest.py auto-downloads all 9 regulation PDFs from official DoD/Army/Navy/AF sources,
+#    chunks them semantically, embeds with a local model, and stores in ChromaDB.
 python3 ingest.py
 
 # 4. Start the backend (Terminal 1)
